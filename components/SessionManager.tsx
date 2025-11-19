@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { BankrollConfig, Round, StrategyType } from '../types';
 import { STRATEGIES } from '../constants';
 import { SmartRecoveryModal } from './SmartRecoveryModal';
-import { Play, Square, PlusCircle, Clock, TrendingUp, TrendingDown, AlertTriangle, Trophy, Target, Volume2, Lock, ShieldCheck, Ban, Timer, Hash, Check, Settings, Zap, Wallet, Shield, Crosshair, ArrowUpRight, Calculator } from 'lucide-react';
+import { Play, Square, PlusCircle, Clock, TrendingUp, TrendingDown, AlertTriangle, Trophy, Target, Volume2, Lock, ShieldCheck, Ban, Timer, Hash, Check, Settings, Zap, Wallet, Shield, Crosshair, ArrowUpRight, Calculator, Map, Gauge } from 'lucide-react';
 
 interface Props {
   config: BankrollConfig;
@@ -49,11 +49,20 @@ export const SessionManager: React.FC<Props> = ({
 
   // Derived Stats
   const sessionProfit = rounds.reduce((acc, r) => acc + r.profit, 0);
-  const stopLossValue = -(config.currentCapital * (config.stopLossPercentage / 100));
   
-  // Dynamic Goal based on Compound Interest setting
+  // CRITICAL FIX: Calculate Goal based on SESSION START CAPITAL, not current capital.
+  // Current capital fluctuates with wins, making the percentage goal a moving target.
+  // We reconstruct the start capital by subtracting current session profit.
+  const sessionStartCapital = config.currentCapital - sessionProfit;
+
+  const stopLossValue = -(sessionStartCapital * (config.stopLossPercentage / 100));
+  
+  // Dynamic Goal based on Compound Interest setting (Fixed for this session)
   const dailyGoalPercent = config.dailyGoalPercentage || 5;
-  const dailyGoalValue = (config.currentCapital * (dailyGoalPercent / 100));
+  const dailyGoalValue = (sessionStartCapital * (dailyGoalPercent / 100));
+  
+  // Remaining to hit target
+  const remainingGoal = Math.max(0, dailyGoalValue - sessionProfit);
   
   // Session specific limits (visual alerts only, logic is in App.tsx for daily)
   const hitStopLoss = sessionProfit <= stopLossValue;
@@ -62,6 +71,34 @@ export const SessionManager: React.FC<Props> = ({
   // Defaults for Two Bets Strategy
   const twoBetsTarget = config.strategyDefaults?.[StrategyType.TWO_BETS] || 2.00;
   const twoBetsCover = config.strategyDefaults?.[StrategyType.TWO_BETS + '_COVER'] || 1.20;
+
+  // --- HELPER: Calculate Rounds needed based on strategy ---
+  const calculateRoundsNeeded = (targetMult: number, currentBet: number) => {
+      if (targetMult <= 1 || currentBet <= 0) return 0;
+      
+      // Calculate profit per round based on strategy
+      let profitPerRound = 0;
+      
+      if (selectedStrategy === StrategyType.TWO_BETS) {
+          // Logic matching handleAddRound: 60% cover (1.2x), 40% target (2.0x)
+          // Profit = (Bet * 0.6 * Cover) + (Bet * 0.4 * Target) - Bet
+          const cover = config.strategyDefaults?.[StrategyType.TWO_BETS + '_COVER'] || 1.20;
+          const target = config.strategyDefaults?.[StrategyType.TWO_BETS] || 2.00;
+          const gainCover = (currentBet * 0.60) * cover;
+          const gainTarget = (currentBet * 0.40) * target;
+          profitPerRound = (gainCover + gainTarget) - currentBet;
+      } else {
+          profitPerRound = currentBet * (targetMult - 1);
+      }
+
+      if (profitPerRound <= 0) return 0;
+      if (remainingGoal <= 0) return 0;
+      
+      return Math.ceil(remainingGoal / profitPerRound);
+  };
+
+  // Calculate rounds for active session based on current input
+  const activeRoundsNeeded = calculateRoundsNeeded(parseFloat(multInput) || 1.20, parseFloat(betInput) || 0);
 
   // Play sound helper
   const playAlertSound = () => {
@@ -287,6 +324,13 @@ export const SessionManager: React.FC<Props> = ({
 
   // --- START SCREEN (PROFESSIONAL DASHBOARD) ---
   if (!isActive) {
+    
+    // Pre-flight Calculation - Fix: Use config.currentCapital as basis for Start Screen as session hasn't started
+    const recBetVal = parseFloat(recommendedBet);
+    const planConservative = Math.ceil(dailyGoalValue / (recBetVal * (1.20 - 1)));
+    const planModerate = Math.ceil(dailyGoalValue / (recBetVal * (1.50 - 1)));
+    const planAggressive = Math.ceil(dailyGoalValue / (recBetVal * (2.00 - 1)));
+
     return (
       <div className="relative bg-slate-900 rounded-2xl border border-slate-800 shadow-2xl overflow-hidden">
          {/* Background Glow Effects */}
@@ -321,6 +365,35 @@ export const SessionManager: React.FC<Props> = ({
                          <Trophy className="w-8 h-8 text-emerald-400" />
                      </div>
                  </div>
+             </div>
+
+             {/* FLIGHT PLAN (Calculadora de Esforço) - NEW SECTION */}
+             <div className="bg-slate-950 rounded-lg border border-slate-800 p-4">
+                 <div className="flex items-center gap-2 text-slate-400 mb-3">
+                     <Map className="w-4 h-4" />
+                     <span className="text-xs font-bold uppercase tracking-wider">Plano de Voo (Esforço Estimado)</span>
+                 </div>
+                 <div className="grid grid-cols-3 gap-2">
+                     <div className="bg-slate-900 p-2 rounded border border-emerald-900/30 text-center">
+                         <p className="text-[10px] text-slate-500">Seguro (1.20x)</p>
+                         <p className="text-lg font-black text-emerald-400">{planConservative}</p>
+                         <p className="text-[9px] text-slate-600">Wins Nec.</p>
+                     </div>
+                     <div className="bg-slate-900 p-2 rounded border border-yellow-900/30 text-center">
+                         <p className="text-[10px] text-slate-500">Moderado (1.50x)</p>
+                         <p className="text-lg font-black text-aviator-gold">{planModerate}</p>
+                         <p className="text-[9px] text-slate-600">Wins Nec.</p>
+                     </div>
+                     <div className="bg-slate-900 p-2 rounded border border-red-900/30 text-center">
+                         <p className="text-[10px] text-slate-500">Turbo (2.00x)</p>
+                         <p className="text-lg font-black text-red-400">{planAggressive}</p>
+                         <p className="text-[9px] text-slate-600">Wins Nec.</p>
+                     </div>
+                 </div>
+                 <p className="text-[10px] text-center text-slate-500 mt-2">
+                    <Timer className="w-3 h-3 inline mr-1"/>
+                    Tempo Estimado: ~{(planConservative * 1.5).toFixed(0)} minutos (Modo Seguro)
+                 </p>
              </div>
 
              {/* Stats Grid */}
@@ -469,7 +542,12 @@ export const SessionManager: React.FC<Props> = ({
           </div>
         </div>
         <div className="bg-slate-800 p-3 rounded-lg border border-aviator-gold/20">
-          <span className="text-xs text-aviator-gold font-bold flex items-center gap-1"><Target className="w-3 h-3"/> Meta Hoje ({dailyGoalPercent}%)</span>
+          <div className="flex justify-between items-center">
+             <span className="text-xs text-aviator-gold font-bold flex items-center gap-1"><Target className="w-3 h-3"/> Meta ({dailyGoalPercent}%)</span>
+             {activeRoundsNeeded > 0 && sessionProfit < dailyGoalValue && (
+                 <span className="text-[9px] bg-slate-700 text-slate-300 px-1 rounded font-bold">Faltam R$ {remainingGoal.toFixed(2)} (~{activeRoundsNeeded} wins)</span>
+             )}
+          </div>
           <div className="text-sm font-mono text-emerald-400/70">
             R$ {dailyGoalValue.toFixed(2)}
           </div>
@@ -483,7 +561,7 @@ export const SessionManager: React.FC<Props> = ({
             R$ {stopLossValue.toFixed(2)}
           </div>
           <div className="w-full bg-slate-700 h-1 mt-2 rounded-full overflow-hidden">
-             <div className="bg-red-500 h-full transition-all" style={{ width: `${Math.min(100, Math.max(0, (sessionProfit / stopLossValue) * 100))}%` }}></div>
+             <div className="bg-red-500 h-full transition-all" style={{ width: `${Math.min(100, Math.max(0, (sessionProfit / Math.abs(stopLossValue)) * 100))}%` }}></div>
           </div>
         </div>
       </div>

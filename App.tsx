@@ -148,157 +148,156 @@ const App: React.FC = () => {
               
               const parsed = JSON.parse(content);
               
-              // Basic Validation
+              // Validate basic structure
               if (parsed.config && Array.isArray(parsed.sessions)) {
-                  if (window.confirm("ATENÇÃO: Isso substituirá todos os seus dados atuais pelos dados do arquivo. Deseja continuar?")) {
-                      setState(parsed);
-                      saveState(parsed);
-                      // Restore last session reference if available
-                      if (parsed.sessions && parsed.sessions.length > 0) {
-                          setLastSession(parsed.sessions[parsed.sessions.length - 1]);
-                      }
-                      alert("Sucesso! Seu cofre de dados foi restaurado.");
+                  setState(parsed);
+                  if (parsed.sessions.length > 0) {
+                      setLastSession(parsed.sessions[parsed.sessions.length - 1]);
                   }
+                  alert("Dados restaurados com sucesso!");
               } else {
-                  alert("Arquivo inválido. Certifique-se de usar um backup oficial do TiagoPro.");
+                  throw new Error("Formato inválido");
               }
-          } catch (err) {
-              console.error("Restore failed:", err);
-              alert("Erro ao ler o arquivo. O arquivo pode estar corrompido.");
+          } catch (error) {
+              console.error("Restore failed:", error);
+              alert("Erro ao restaurar: Arquivo inválido.");
           }
       };
       reader.readAsText(file);
   };
 
-
-  // --- LOCKOUT LOGIC ---
-  // Calculate total profit for TODAY across all sessions
-  const today = new Date().toLocaleDateString();
-  const todaySessions = state.sessions.filter(s => new Date(s.date).toLocaleDateString() === today);
-  const todayTotalProfit = todaySessions.reduce((acc, s) => acc + s.profit, 0);
+  // --- GAME LOCK LOGIC (GLOBAL) ---
+  const today = new Date().toDateString();
+  const sessionsToday = state.sessions.filter(s => new Date(s.date).toDateString() === today);
+  const dailyProfit = sessionsToday.reduce((acc, s) => acc + s.profit, 0);
   
-  // --- LIFETIME PROFIT FOR RANKING ---
+  // Calculate Daily Limits based on Start of Day Balance (approximate logic)
+  // In a perfect world we track 'startOfDayCapital', but for now we use current - dailyProfit
+  const startOfDayCapital = state.config.currentCapital - dailyProfit;
+  const dailyStopLoss = -(startOfDayCapital * (state.config.stopLossPercentage / 100));
+  const dailyGoal = (startOfDayCapital * ((state.config.dailyGoalPercentage || 5) / 100));
+
+  let lockStatus: 'WIN' | 'LOSS' | null = null;
+  if (dailyProfit <= dailyStopLoss) lockStatus = 'LOSS';
+  if (dailyProfit >= dailyGoal) lockStatus = 'WIN';
+
+  // Calculate Lifetime Profit for Rank
   const lifetimeProfit = state.sessions.reduce((acc, s) => acc + s.profit, 0);
 
-  const dailyGoalValue = state.config.currentCapital * ((state.config.dailyGoalPercentage || 5) / 100);
-  const dailyStopLossValue = -(state.config.currentCapital * (state.config.stopLossPercentage / 100));
-
-  // Determine Lock Status
-  const isProfitGoalMet = todayTotalProfit >= dailyGoalValue;
-  const isStopLossHit = todayTotalProfit <= dailyStopLossValue;
-  
-  const lockStatus = isProfitGoalMet ? 'WIN' : isStopLossHit ? 'LOSS' : null;
-
-  // --- RENDER ONBOARDING IF NOT COMPLETE ---
   if (!state.hasCompletedOnboarding) {
       return <OnboardingWizard onComplete={handleOnboardingComplete} />;
   }
 
   return (
-    <div className="min-h-screen bg-slate-950 text-white pb-20">
-      {/* Prompt de Instalação */}
+    <div className="min-h-screen bg-slate-950 text-white pb-24 font-sans selection:bg-emerald-500/30 selection:text-emerald-200">
       <InstallPrompt />
 
-      {/* Top Bar */}
-      <header className="bg-slate-900 border-b border-slate-800 p-4 sticky top-0 z-10">
-        <div className="flex justify-between items-center max-w-2xl mx-auto mb-4">
-            <div className="flex items-center gap-3">
-                <TiagoLogo className="w-10 h-10" />
-                <div>
-                    <h1 className="text-xl font-black tracking-tighter text-white leading-none">
-                        TIAGO<span className="text-aviator-red">PRO</span>
-                    </h1>
-                    <p className="text-[10px] text-aviator-gold tracking-widest uppercase">Rumo a 2026</p>
-                </div>
-            </div>
-            <div className="text-right">
-                <div className="text-xs text-slate-400">Banca Atual</div>
-                <div className={`text-lg font-mono font-bold transition-all duration-500 ${
-                    lockStatus === 'WIN' 
-                        ? 'text-emerald-300 drop-shadow-[0_0_8px_rgba(52,211,153,0.8)] animate-pulse' 
-                        : lockStatus === 'LOSS' 
-                            ? 'text-red-500 drop-shadow-[0_0_8px_rgba(239,68,68,0.8)] animate-pulse' 
-                            : 'text-emerald-400'
-                }`}>
-                    R$ {state.config.currentCapital.toFixed(2)}
-                </div>
+      {/* Top Navigation / Header */}
+      <header className="bg-slate-900/80 backdrop-blur-md border-b border-slate-800 sticky top-0 z-40 px-4 py-3 flex justify-between items-center shadow-lg">
+        <div className="flex items-center gap-3">
+            <TiagoLogo className="w-10 h-10" />
+            <div>
+                <h1 className="font-black text-lg tracking-tight bg-gradient-to-r from-white to-slate-400 bg-clip-text text-transparent">
+                    TIAGO PRO
+                </h1>
+                <p className="text-[10px] text-emerald-500 font-bold uppercase tracking-widest">
+                    Sistema 2026
+                </p>
             </div>
         </div>
-        
-        {/* Rank Badge (Gamification) */}
-        <div className="max-w-2xl mx-auto">
-           <RankBadge lifetimeProfit={lifetimeProfit} />
+        <div className="flex flex-col items-end">
+            <div className={`text-sm font-mono font-bold px-3 py-1 rounded-full border ${lockStatus === 'WIN' ? 'bg-emerald-900/20 border-emerald-500/50 text-emerald-400 shadow-[0_0_10px_rgba(16,185,129,0.3)] animate-pulse' : lockStatus === 'LOSS' ? 'bg-red-900/20 border-red-500/50 text-red-400 shadow-[0_0_10px_rgba(239,68,68,0.3)] animate-pulse' : 'bg-slate-800 border-slate-700 text-white'}`}>
+                R$ {state.config.currentCapital.toFixed(2)}
+            </div>
         </div>
       </header>
 
-      <main className="p-4 max-w-2xl mx-auto">
+      {/* Rank Badge Area */}
+      <div className="px-4 pt-4">
+          <RankBadge lifetimeProfit={lifetimeProfit} />
+      </div>
+
+      {/* Main Content Area */}
+      <main className="p-4 max-w-3xl mx-auto animate-in fade-in slide-in-from-bottom-2 duration-500">
+        
         {activeTab === 'session' && (
-            <SessionManager 
-                config={state.config}
-                isActive={state.isSessionActive}
-                rounds={state.currentSessionRounds}
-                startTime={state.sessionStartTime}
-                onStart={startSession}
-                onEnd={endSession}
-                onAddRound={addRound}
-                onUpdateConfig={handleConfigUpdate}
-                lockStatus={lockStatus} // Passing the lock status
-                todayProfit={todayTotalProfit}
-            />
+          <SessionManager 
+            config={state.config}
+            isActive={state.isSessionActive}
+            rounds={state.currentSessionRounds}
+            startTime={state.sessionStartTime}
+            onStart={startSession}
+            onEnd={endSession}
+            onAddRound={addRound}
+            onUpdateConfig={handleConfigUpdate}
+            lockStatus={lockStatus}
+            todayProfit={dailyProfit}
+          />
         )}
+
         {activeTab === 'config' && (
-            <BankrollConfigCard 
-                config={state.config}
-                onUpdate={handleConfigUpdate}
-                onExport={handleExportData}
-                onImport={handleImportData}
-            />
+          <BankrollConfigCard 
+            config={state.config} 
+            onUpdate={handleConfigUpdate} 
+            onExport={handleExportData}
+            onImport={handleImportData}
+          />
         )}
+
         {activeTab === 'analytics' && (
-            <Analytics 
-                sessions={state.sessions}
-                initialBankroll={state.config.initialCapital}
-                currentBankroll={state.config.currentCapital}
-                dailyGoalPercent={state.config.dailyGoalPercentage}
-                onClearHistory={clearHistory}
-            />
+          <Analytics 
+            sessions={state.sessions} 
+            initialBankroll={state.config.initialCapital}
+            dailyGoalPercent={state.config.dailyGoalPercentage}
+            currentBankroll={state.config.currentCapital}
+            onClearHistory={clearHistory}
+          />
         )}
+
         {activeTab === 'mindset' && (
-            <MindsetGuide lastSession={lastSession} />
+          <MindsetGuide 
+             lastSession={lastSession} 
+             sessions={state.sessions}
+             currentBankroll={state.config.currentCapital}
+          />
         )}
+
       </main>
 
       {/* Bottom Navigation */}
-      <nav className="fixed bottom-0 w-full bg-slate-900 border-t border-slate-800 pb-safe z-40">
-        <div className="flex justify-around items-center max-w-2xl mx-auto h-16">
-            <button 
-                onClick={() => setActiveTab('session')}
-                className={`flex flex-col items-center gap-1 ${activeTab === 'session' ? 'text-aviator-red' : 'text-slate-500'}`}
-            >
-                <PlayCircle className="w-6 h-6" />
-                <span className="text-[10px] font-bold">JOGAR</span>
-            </button>
-            <button 
-                onClick={() => setActiveTab('analytics')}
-                className={`flex flex-col items-center gap-1 ${activeTab === 'analytics' ? 'text-aviator-red' : 'text-slate-500'}`}
-            >
-                <LineChart className="w-6 h-6" />
-                <span className="text-[10px] font-bold">DADOS</span>
-            </button>
-            <button 
-                onClick={() => setActiveTab('mindset')}
-                className={`flex flex-col items-center gap-1 ${activeTab === 'mindset' ? 'text-aviator-red' : 'text-slate-500'}`}
-            >
-                <BrainCircuit className="w-6 h-6" />
-                <span className="text-[10px] font-bold">MENTAL</span>
-            </button>
-            <button 
-                onClick={() => setActiveTab('config')}
-                className={`flex flex-col items-center gap-1 ${activeTab === 'config' ? 'text-aviator-red' : 'text-slate-500'}`}
-            >
-                <LayoutDashboard className="w-6 h-6" />
-                <span className="text-[10px] font-bold">CONFIG</span>
-            </button>
+      <nav className="fixed bottom-0 left-0 right-0 bg-slate-900/95 backdrop-blur-lg border-t border-slate-800 pb-safe-area shadow-[0_-5px_20px_rgba(0,0,0,0.5)]">
+        <div className="flex justify-around items-center p-2 max-w-3xl mx-auto">
+          <button 
+            onClick={() => setActiveTab('session')}
+            className={`flex flex-col items-center p-2 rounded-xl transition-all duration-300 ${activeTab === 'session' ? 'text-emerald-400 bg-emerald-900/20 scale-110' : 'text-slate-500 hover:text-slate-300'}`}
+          >
+            <PlayCircle className={`w-6 h-6 ${activeTab === 'session' ? 'fill-emerald-500/20' : ''}`} />
+            <span className="text-[10px] font-bold mt-1">Operar</span>
+          </button>
+
+          <button 
+            onClick={() => setActiveTab('analytics')}
+            className={`flex flex-col items-center p-2 rounded-xl transition-all duration-300 ${activeTab === 'analytics' ? 'text-blue-400 bg-blue-900/20 scale-110' : 'text-slate-500 hover:text-slate-300'}`}
+          >
+            <LineChart className={`w-6 h-6 ${activeTab === 'analytics' ? 'fill-blue-500/20' : ''}`} />
+            <span className="text-[10px] font-bold mt-1">Dados</span>
+          </button>
+
+          <button 
+            onClick={() => setActiveTab('mindset')}
+            className={`flex flex-col items-center p-2 rounded-xl transition-all duration-300 ${activeTab === 'mindset' ? 'text-aviator-gold bg-yellow-900/20 scale-110' : 'text-slate-500 hover:text-slate-300'}`}
+          >
+            <BrainCircuit className={`w-6 h-6 ${activeTab === 'mindset' ? 'fill-yellow-500/20' : ''}`} />
+            <span className="text-[10px] font-bold mt-1">Mental</span>
+          </button>
+
+          <button 
+            onClick={() => setActiveTab('config')}
+            className={`flex flex-col items-center p-2 rounded-xl transition-all duration-300 ${activeTab === 'config' ? 'text-purple-400 bg-purple-900/20 scale-110' : 'text-slate-500 hover:text-slate-300'}`}
+          >
+            <LayoutDashboard className={`w-6 h-6 ${activeTab === 'config' ? 'fill-purple-500/20' : ''}`} />
+            <span className="text-[10px] font-bold mt-1">Config</span>
+          </button>
         </div>
       </nav>
     </div>
