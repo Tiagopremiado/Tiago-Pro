@@ -2,8 +2,8 @@ import React, { useState, useEffect, useRef } from 'react';
 import { BankrollConfig, Round, StrategyType } from '../types';
 import { STRATEGIES } from '../constants';
 import { SmartRecoveryModal } from './SmartRecoveryModal';
-import { ExternalAnalysis } from './ExternalAnalysis';
-import { Play, Square, PlusCircle, Clock, TrendingUp, TrendingDown, AlertTriangle, Trophy, Target, Volume2, Lock, ShieldCheck, Ban, Timer, Hash, Check, Settings, Zap, Wallet, Shield, Crosshair, ArrowUpRight, Calculator, Map, Gauge } from 'lucide-react';
+import { ExternalAnalysis, AnalysisMode } from './ExternalAnalysis';
+import { Play, Square, PlusCircle, Clock, TrendingUp, TrendingDown, AlertTriangle, Trophy, Target, Volume2, Lock, ShieldCheck, Ban, Timer, Hash, Check, Settings, Zap, Wallet, Shield, Crosshair, ArrowUpRight, Calculator, Map, Eye } from 'lucide-react';
 
 interface Props {
   config: BankrollConfig;
@@ -41,19 +41,22 @@ export const SessionManager: React.FC<Props> = ({
   const [showSummary, setShowSummary] = useState(false);
   const [showStrategyConfig, setShowStrategyConfig] = useState(false);
   const [showRecoveryModal, setShowRecoveryModal] = useState(false);
-  // State for Analysis Modal (TipMiner)
-  const [showAnalysis, setShowAnalysis] = useState(false);
+  
+  // REPLACED simple boolean with Mode State for Split View support
+  const [analysisMode, setAnalysisMode] = useState<AnalysisMode>('closed');
 
   const audioRef = useRef<HTMLAudioElement | null>(null);
 
-  // Auto-open analysis when session starts
+  // Auto-open analysis in SPLIT MODE when session starts
   useEffect(() => {
       if (isActive && startTime) {
           // Apenas abre se for o início da sessão (tempo zerado ou muito baixo)
-          // Isso evita que reabra num refresh se não quiser
           if (elapsedTime < 2) {
-              setShowAnalysis(true);
+              setAnalysisMode('split');
           }
+      } else {
+          // If session is not active, reset or keep based on user action.
+          // Usually we want Recon Mode to be separate.
       }
   }, [isActive, startTime]);
 
@@ -65,38 +68,26 @@ export const SessionManager: React.FC<Props> = ({
   // Derived Stats
   const sessionProfit = rounds.reduce((acc, r) => acc + r.profit, 0);
   
-  // CRITICAL FIX: Calculate Goal based on SESSION START CAPITAL, not current capital.
-  // Current capital fluctuates with wins, making the percentage goal a moving target.
-  // We reconstruct the start capital by subtracting current session profit.
   const sessionStartCapital = config.currentCapital - sessionProfit;
-
   const stopLossValue = -(sessionStartCapital * (config.stopLossPercentage / 100));
   
-  // Dynamic Goal based on Compound Interest setting (Fixed for this session)
   const dailyGoalPercent = config.dailyGoalPercentage || 5;
   const dailyGoalValue = (sessionStartCapital * (dailyGoalPercent / 100));
   
-  // Remaining to hit target
   const remainingGoal = Math.max(0, dailyGoalValue - sessionProfit);
   
-  // Session specific limits (visual alerts only, logic is in App.tsx for daily)
   const hitStopLoss = sessionProfit <= stopLossValue;
   const hitDailyGoal = sessionProfit >= dailyGoalValue;
 
-  // Defaults for Two Bets Strategy
   const twoBetsTarget = config.strategyDefaults?.[StrategyType.TWO_BETS] || 2.00;
   const twoBetsCover = config.strategyDefaults?.[StrategyType.TWO_BETS + '_COVER'] || 1.20;
 
-  // --- HELPER: Calculate Rounds needed based on strategy ---
   const calculateRoundsNeeded = (targetMult: number, currentBet: number) => {
       if (targetMult <= 1 || currentBet <= 0) return 0;
       
-      // Calculate profit per round based on strategy
       let profitPerRound = 0;
       
       if (selectedStrategy === StrategyType.TWO_BETS) {
-          // Logic matching handleAddRound: 60% cover (1.2x), 40% target (2.0x)
-          // Profit = (Bet * 0.6 * Cover) + (Bet * 0.4 * Target) - Bet
           const cover = config.strategyDefaults?.[StrategyType.TWO_BETS + '_COVER'] || 1.20;
           const target = config.strategyDefaults?.[StrategyType.TWO_BETS] || 2.00;
           const gainCover = (currentBet * 0.60) * cover;
@@ -112,10 +103,8 @@ export const SessionManager: React.FC<Props> = ({
       return Math.ceil(remainingGoal / profitPerRound);
   };
 
-  // Calculate rounds for active session based on current input
   const activeRoundsNeeded = calculateRoundsNeeded(parseFloat(multInput) || 1.20, parseFloat(betInput) || 0);
 
-  // Play sound helper
   const playAlertSound = () => {
     try {
       const AudioContext = window.AudioContext || (window as any).webkitAudioContext;
@@ -129,7 +118,7 @@ export const SessionManager: React.FC<Props> = ({
       gain.connect(ctx.destination);
       
       osc.type = 'sine';
-      osc.frequency.setValueAtTime(880, ctx.currentTime); // A5
+      osc.frequency.setValueAtTime(880, ctx.currentTime);
       osc.frequency.exponentialRampToValueAtTime(440, ctx.currentTime + 0.5);
       
       gain.gain.setValueAtTime(0.1, ctx.currentTime);
@@ -149,7 +138,6 @@ export const SessionManager: React.FC<Props> = ({
         const seconds = Math.floor((Date.now() - startTime) / 1000);
         setElapsedTime(seconds);
         
-        // Trigger alert exactly at 30 mins (1800 seconds)
         if (seconds === 1800) {
             playAlertSound();
         }
@@ -160,18 +148,16 @@ export const SessionManager: React.FC<Props> = ({
     return () => clearInterval(interval);
   }, [isActive, startTime]);
 
-  // Countdown Logic for Lockout
   useEffect(() => {
       if (lockStatus) {
           const timer = setInterval(() => {
               const now = new Date();
               const tomorrow = new Date(now);
               tomorrow.setDate(tomorrow.getDate() + 1);
-              tomorrow.setHours(0, 0, 1, 0); // 00:00:01 next day
+              tomorrow.setHours(0, 0, 1, 0);
               
               const diff = tomorrow.getTime() - now.getTime();
               if (diff <= 0) {
-                  // Reload page or handle unlock conceptually (App needs to refresh state)
                   window.location.reload(); 
               } else {
                   const h = Math.floor((diff % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
@@ -185,11 +171,9 @@ export const SessionManager: React.FC<Props> = ({
   }, [lockStatus]);
 
 
-  // Update input default if config changes OR Strategy Changes
   useEffect(() => {
       if(isActive) {
          if (selectedStrategy === StrategyType.TWO_BETS) {
-             // For input display, we usually show the main target
              const defaultForStrategy = config.strategyDefaults?.[StrategyType.TWO_BETS];
              if (defaultForStrategy) setMultInput(defaultForStrategy.toString());
          } else {
@@ -222,21 +206,18 @@ export const SessionManager: React.FC<Props> = ({
   };
 
   const handleAddRound = (win: boolean, overrideMult?: number, overrideStrategy?: StrategyType) => {
-    const bet = parseFloat(betInput); // Use the explicit input value
+    const bet = parseFloat(betInput);
     const mult = overrideMult !== undefined ? overrideMult : (parseFloat(multInput) || 0);
     const strategy = overrideStrategy || selectedStrategy;
     
-    if (isNaN(bet) || bet <= 0) return; // Safety check
+    if (isNaN(bet) || bet <= 0) return;
 
     let profit = 0;
     
     if (win) {
       if (strategy === StrategyType.TWO_BETS) {
-          // Logic: 60% on Cover, 40% on Target
-          // If "WIN" is clicked, we assume both hit (Perfect Win)
-          // Profit = (Bet * 0.6 * CoverMult) + (Bet * 0.4 * TargetMult) - Bet
           const cover = config.strategyDefaults?.[StrategyType.TWO_BETS + '_COVER'] || 1.20;
-          const target = mult; // The override or input usually represents the main target in this context
+          const target = mult; 
           
           const gainCover = (bet * 0.60) * cover;
           const gainTarget = (bet * 0.40) * target;
@@ -246,7 +227,6 @@ export const SessionManager: React.FC<Props> = ({
           profit = (bet * mult) - bet;
       }
     } else {
-      // Loss is total loss of the bet amount
       profit = -bet;
     }
 
@@ -261,14 +241,12 @@ export const SessionManager: React.FC<Props> = ({
     };
 
     onAddRound(newRound);
-    // We do NOT clear the input here. It stays as the recommended bet (which will update via useEffect)
   };
 
   const handleTwoBetsQuickWin = () => {
     const defaultTarget = config.strategyDefaults?.[StrategyType.TWO_BETS] || 2.00;
     setMultInput(defaultTarget.toString());
     setSelectedStrategy(StrategyType.TWO_BETS);
-    // Pass the target. handleAddRound will pick up the Cover config and do the split math.
     handleAddRound(true, defaultTarget, StrategyType.TWO_BETS);
   };
   
@@ -283,54 +261,39 @@ export const SessionManager: React.FC<Props> = ({
 
   const confirmEndSession = () => {
     setShowSummary(false);
-    setShowAnalysis(false); // Ensure analysis closes
+    setAnalysisMode('closed');
     onEnd();
   };
 
-  const isOverTime = elapsedTime >= 1800; // 30 mins * 60s
+  const isOverTime = elapsedTime >= 1800; 
   const quickMultipliers = ['1.10', '1.20', '1.30', '1.50', '2.00'];
 
-  // --- LOCKED SCREEN (Daily Goal or Stop Loss Hit) ---
+  // --- LOCKED SCREEN ---
   if (lockStatus && !isActive) {
       const isWin = lockStatus === 'WIN';
       return (
           <div className={`flex flex-col items-center justify-center py-12 px-4 rounded-xl border shadow-2xl relative overflow-hidden ${isWin ? 'bg-slate-900 border-emerald-800' : 'bg-slate-900 border-red-900'}`}>
-              
-              {/* Overlay Pattern */}
               <div className="absolute inset-0 opacity-5 pointer-events-none" 
                   style={{backgroundImage: 'radial-gradient(circle, #ffffff 1px, transparent 1px)', backgroundSize: '20px 20px'}}>
               </div>
-
               <div className={`mb-6 p-6 rounded-full ${isWin ? 'bg-emerald-900/30' : 'bg-red-900/30'} animate-pulse`}>
                  {isWin ? <ShieldCheck className="w-16 h-16 text-emerald-400" /> : <Ban className="w-16 h-16 text-red-500" />}
               </div>
-
-              <h3 className="text-2xl font-black text-white mb-2 uppercase tracking-widest text-center">
-                  SISTEMA BLOQUEADO
-              </h3>
-              
-              <p className="font-mono text-3xl font-bold mb-6 text-slate-300 bg-slate-950 px-6 py-2 rounded-lg border border-slate-800">
-                  {timeToUnlock || "Calculando..."}
-              </p>
-
+              <h3 className="text-2xl font-black text-white mb-2 uppercase tracking-widest text-center">SISTEMA BLOQUEADO</h3>
+              <p className="font-mono text-3xl font-bold mb-6 text-slate-300 bg-slate-950 px-6 py-2 rounded-lg border border-slate-800">{timeToUnlock || "Calculando..."}</p>
               <div className="bg-slate-950/80 p-6 rounded-lg max-w-sm text-center border border-slate-800 shadow-inner">
                   {isWin ? (
                       <>
                         <p className="text-emerald-400 font-bold text-lg mb-2">META BATIDA! (+R$ {todayProfit.toFixed(2)})</p>
-                        <p className="text-slate-400 text-sm italic">
-                            "A ganância é o túmulo do lucro. Você venceu o mercado hoje. Saia com o dinheiro no bolso e orgulho na mente. Volte amanhã para fazer de novo."
-                        </p>
+                        <p className="text-slate-400 text-sm italic">"A ganância é o túmulo do lucro. Saia com orgulho."</p>
                       </>
                   ) : (
                       <>
                         <p className="text-red-400 font-bold text-lg mb-2">STOP LOSS ATINGIDO ({todayProfit.toFixed(2)})</p>
-                        <p className="text-slate-400 text-sm italic">
-                            "Não tente recuperar. Aceitar a derrota de hoje é a única forma de proteger a banca para vencer amanhã. Sua disciplina vale mais que esse dinheiro."
-                        </p>
+                        <p className="text-slate-400 text-sm italic">"Não tente recuperar. Disciplina vale mais que dinheiro."</p>
                       </>
                   )}
               </div>
-              
               <div className="mt-8 flex items-center gap-2 text-xs text-slate-600 uppercase tracking-wider">
                   <Lock className="w-3 h-3" /> Liberação Automática: 00:01
               </div>
@@ -338,10 +301,8 @@ export const SessionManager: React.FC<Props> = ({
       );
   }
 
-  // --- START SCREEN (PROFESSIONAL DASHBOARD) ---
+  // --- START SCREEN ---
   if (!isActive) {
-    
-    // Pre-flight Calculation - Fix: Use config.currentCapital as basis for Start Screen as session hasn't started
     const recBetVal = parseFloat(recommendedBet);
     const planConservative = Math.ceil(dailyGoalValue / (recBetVal * (1.20 - 1)));
     const planModerate = Math.ceil(dailyGoalValue / (recBetVal * (1.50 - 1)));
@@ -349,11 +310,16 @@ export const SessionManager: React.FC<Props> = ({
 
     return (
       <div className="relative bg-slate-900 rounded-2xl border border-slate-800 shadow-2xl overflow-hidden">
-         {/* Background Glow Effects */}
          <div className="absolute top-0 right-0 -mt-10 -mr-10 w-40 h-40 bg-emerald-500/10 rounded-full blur-3xl"></div>
          <div className="absolute bottom-0 left-0 -mb-10 -ml-10 w-40 h-40 bg-aviator-red/10 rounded-full blur-3xl"></div>
 
-         {/* Header Section */}
+         {/* RECON MODE ANALYSIS */}
+         <ExternalAnalysis 
+             mode={analysisMode} 
+             setMode={setAnalysisMode} 
+             isSessionActive={false}
+         />
+
          <div className="pt-8 pb-4 px-6 text-center border-b border-slate-800/50">
              <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-slate-800 border border-slate-700 mb-3">
                  <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></div>
@@ -363,10 +329,7 @@ export const SessionManager: React.FC<Props> = ({
              <p className="text-slate-400 text-sm mt-1">Prepare-se para a operação de hoje.</p>
          </div>
 
-         {/* Main Stats Dashboard */}
          <div className="p-6 space-y-4">
-             
-             {/* Daily Goal Hero Card */}
              <div className="bg-gradient-to-br from-slate-800 to-slate-900 rounded-xl p-1 border border-emerald-500/30 shadow-lg">
                  <div className="bg-slate-950/50 rounded-lg p-4 flex items-center justify-between">
                      <div>
@@ -383,7 +346,6 @@ export const SessionManager: React.FC<Props> = ({
                  </div>
              </div>
 
-             {/* FLIGHT PLAN (Calculadora de Esforço) - NEW SECTION */}
              <div className="bg-slate-950 rounded-lg border border-slate-800 p-4">
                  <div className="flex items-center gap-2 text-slate-400 mb-3">
                      <Map className="w-4 h-4" />
@@ -408,64 +370,46 @@ export const SessionManager: React.FC<Props> = ({
                  </div>
                  <p className="text-[10px] text-center text-slate-500 mt-2">
                     <Timer className="w-3 h-3 inline mr-1"/>
-                    Tempo Estimado: ~{(planConservative * 1.5).toFixed(0)} minutos (Modo Seguro)
+                    Tempo Estimado: ~{(planConservative * 1.5).toFixed(0)} minutos
                  </p>
              </div>
 
-             {/* Stats Grid */}
              <div className="grid grid-cols-2 gap-3">
-                 {/* Current Bankroll */}
                  <div className="bg-slate-800/50 p-3 rounded-lg border border-slate-700">
                      <div className="flex items-center gap-2 mb-2 text-slate-400 text-xs">
                          <Wallet className="w-3 h-3" /> Banca Atual
                      </div>
-                     <div className="text-lg font-bold text-white">
-                         R$ {config.currentCapital.toFixed(2)}
-                     </div>
+                     <div className="text-lg font-bold text-white">R$ {config.currentCapital.toFixed(2)}</div>
                  </div>
-
-                 {/* Safe Bet */}
                  <div className="bg-slate-800/50 p-3 rounded-lg border border-slate-700">
                      <div className="flex items-center gap-2 mb-2 text-aviator-gold text-xs">
                          <Crosshair className="w-3 h-3" /> Entrada (1-2%)
                      </div>
-                     <div className="text-lg font-bold text-white">
-                         R$ {recommendedBet}
-                     </div>
+                     <div className="text-lg font-bold text-white">R$ {recommendedBet}</div>
                  </div>
-
-                 {/* Stop Loss */}
                  <div className="bg-red-950/20 p-3 rounded-lg border border-red-900/30">
                      <div className="flex items-center gap-2 mb-2 text-red-400 text-xs">
                          <Shield className="w-3 h-3" /> Stop Loss
                      </div>
-                     <div className="text-lg font-bold text-red-200">
-                         -R$ {Math.abs(stopLossValue).toFixed(2)}
-                     </div>
+                     <div className="text-lg font-bold text-red-200">-R$ {Math.abs(stopLossValue).toFixed(2)}</div>
                  </div>
-
-                 {/* Expected Growth */}
                  <div className="bg-emerald-950/20 p-3 rounded-lg border border-emerald-900/30">
                      <div className="flex items-center gap-2 mb-2 text-emerald-400 text-xs">
                          <ArrowUpRight className="w-3 h-3" /> Projeção
                      </div>
-                     <div className="text-lg font-bold text-emerald-200">
-                         R$ {(config.currentCapital + dailyGoalValue).toFixed(2)}
-                     </div>
+                     <div className="text-lg font-bold text-emerald-200">R$ {(config.currentCapital + dailyGoalValue).toFixed(2)}</div>
                  </div>
              </div>
-
-             {/* Tip Carousel */}
-             <div className="bg-slate-950 p-3 rounded-lg border border-slate-800 text-center">
-                 <p className="text-xs text-slate-500 italic">
-                     "A disciplina é a ponte entre metas e realizações. Respeite o plano."
-                 </p>
-             </div>
-
          </div>
 
-         {/* Action Area */}
-         <div className="p-6 pt-0">
+         <div className="p-6 pt-0 space-y-3">
+             <button 
+                onClick={() => setAnalysisMode('full')}
+                className="w-full bg-blue-600/20 hover:bg-blue-600/30 border border-blue-500/50 text-blue-400 hover:text-white font-bold py-3 rounded-xl flex items-center justify-center gap-2 transition-all active:scale-[0.98]"
+             >
+                 <Eye className="w-5 h-5" /> ANÁLISE DE MERCADO (RECONHECIMENTO)
+             </button>
+
              <button
                 onClick={onStart}
                 className="group relative w-full bg-aviator-red hover:bg-pink-600 text-white font-black text-lg py-5 rounded-xl shadow-[0_0_25px_rgba(233,30,99,0.4)] transition-all active:scale-[0.98] overflow-hidden"
@@ -484,10 +428,11 @@ export const SessionManager: React.FC<Props> = ({
   return (
     <div className="bg-slate-900 border border-slate-800 rounded-xl p-4 shadow-lg space-y-6 relative overflow-hidden">
       
-      {/* EXTERNAL ANALYSIS (TIPMINER) */}
+      {/* EXTERNAL ANALYSIS (TIPMINER) - SPLIT/FULL/MINIMIZED VIEW */}
       <ExternalAnalysis 
-          isOpen={showAnalysis} 
-          onToggle={() => setShowAnalysis(!showAnalysis)} 
+          mode={analysisMode} 
+          setMode={setAnalysisMode}
+          isSessionActive={true}
       />
 
       {/* SMART RECOVERY MODAL */}
@@ -499,49 +444,27 @@ export const SessionManager: React.FC<Props> = ({
           />
       )}
 
-      {/* SUMMARY MODAL OVERLAY */}
+      {/* SUMMARY MODAL */}
       {showSummary && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/90 backdrop-blur-md p-4 animate-in fade-in duration-200">
-          <div className="bg-slate-900 border border-slate-700 rounded-2xl p-6 max-w-sm w-full shadow-2xl transform scale-100">
-             <h2 className="text-xl font-black text-white mb-6 text-center uppercase tracking-wider border-b border-slate-800 pb-4">
-               Resumo da Sessão
-             </h2>
-
+          <div className="bg-slate-900 border border-slate-700 rounded-2xl p-6 max-w-sm w-full shadow-2xl">
+             <h2 className="text-xl font-black text-white mb-6 text-center uppercase tracking-wider border-b border-slate-800 pb-4">Resumo da Sessão</h2>
              <div className="flex flex-col items-center mb-8">
                 {sessionProfit >= 0 ? (
-                  <div className="bg-emerald-500/10 p-4 rounded-full mb-2 ring-1 ring-emerald-500/50">
-                    <Trophy className="w-10 h-10 text-emerald-400" />
-                  </div>
+                  <div className="bg-emerald-500/10 p-4 rounded-full mb-2 ring-1 ring-emerald-500/50"><Trophy className="w-10 h-10 text-emerald-400" /></div>
                 ) : (
-                  <div className="bg-red-500/10 p-4 rounded-full mb-2 ring-1 ring-red-500/50">
-                    <TrendingDown className="w-10 h-10 text-red-500" />
-                  </div>
+                  <div className="bg-red-500/10 p-4 rounded-full mb-2 ring-1 ring-red-500/50"><TrendingDown className="w-10 h-10 text-red-500" /></div>
                 )}
                 <span className="text-slate-400 text-xs uppercase tracking-widest mb-1">Resultado Final</span>
                 <span className={`text-4xl font-black ${sessionProfit >= 0 ? 'text-emerald-400' : 'text-red-500'}`}>
                    {sessionProfit >= 0 ? '+' : ''}R$ {sessionProfit.toFixed(2)}
                 </span>
              </div>
-
              <div className="grid grid-cols-2 gap-4 mb-6">
-                <div className="bg-slate-800 p-3 rounded-xl flex flex-col items-center">
-                   <div className="flex items-center gap-1 text-slate-400 text-xs mb-1">
-                     <Timer className="w-3 h-3" /> Duração
-                   </div>
-                   <span className="text-white font-mono font-bold">{formatTime(elapsedTime)}</span>
-                </div>
-                <div className="bg-slate-800 p-3 rounded-xl flex flex-col items-center">
-                   <div className="flex items-center gap-1 text-slate-400 text-xs mb-1">
-                     <Hash className="w-3 h-3" /> Rodadas
-                   </div>
-                   <span className="text-white font-mono font-bold">{rounds.length}</span>
-                </div>
+                <div className="bg-slate-800 p-3 rounded-xl flex flex-col items-center"><div className="flex items-center gap-1 text-slate-400 text-xs mb-1"><Timer className="w-3 h-3" /> Duração</div><span className="text-white font-mono font-bold">{formatTime(elapsedTime)}</span></div>
+                <div className="bg-slate-800 p-3 rounded-xl flex flex-col items-center"><div className="flex items-center gap-1 text-slate-400 text-xs mb-1"><Hash className="w-3 h-3" /> Rodadas</div><span className="text-white font-mono font-bold">{rounds.length}</span></div>
              </div>
-
-             <button 
-               onClick={confirmEndSession}
-               className="w-full bg-aviator-gold hover:bg-yellow-400 text-black font-bold py-3 rounded-xl flex items-center justify-center gap-2 transition-colors shadow-[0_0_15px_rgba(255,215,0,0.3)]"
-             >
+             <button onClick={confirmEndSession} className="w-full bg-aviator-gold hover:bg-yellow-400 text-black font-bold py-3 rounded-xl flex items-center justify-center gap-2 transition-colors shadow-[0_0_15px_rgba(255,215,0,0.3)]">
                <Check className="w-5 h-5" /> CONFIRMAR E SALVAR
              </button>
           </div>
@@ -553,8 +476,7 @@ export const SessionManager: React.FC<Props> = ({
         <div className={`bg-slate-800 p-3 rounded-lg ${isOverTime ? 'border border-red-500 animate-pulse' : ''}`}>
           <span className="text-xs text-slate-400">Tempo (Max 30m)</span>
           <div className={`text-xl font-mono font-bold flex items-center gap-2 ${isOverTime ? 'text-red-500' : 'text-white'}`}>
-            <Clock className="w-4 h-4" />
-            {formatTime(elapsedTime)}
+            <Clock className="w-4 h-4" />{formatTime(elapsedTime)}
           </div>
         </div>
         <div className="bg-slate-800 p-3 rounded-lg">
@@ -570,29 +492,25 @@ export const SessionManager: React.FC<Props> = ({
                  <span className="text-[9px] bg-slate-700 text-slate-300 px-1 rounded font-bold">Faltam R$ {remainingGoal.toFixed(2)} (~{activeRoundsNeeded} wins)</span>
              )}
           </div>
-          <div className="text-sm font-mono text-emerald-400/70">
-            R$ {dailyGoalValue.toFixed(2)}
-          </div>
+          <div className="text-sm font-mono text-emerald-400/70">R$ {dailyGoalValue.toFixed(2)}</div>
           <div className="w-full bg-slate-700 h-1 mt-2 rounded-full overflow-hidden">
              <div className="bg-aviator-gold h-full transition-all" style={{ width: `${Math.min(100, Math.max(0, (sessionProfit / dailyGoalValue) * 100))}%` }}></div>
           </div>
         </div>
         <div className="bg-slate-800 p-3 rounded-lg">
           <span className="text-xs text-slate-400">Stop Loss</span>
-          <div className="text-sm font-mono text-red-400/70">
-            R$ {stopLossValue.toFixed(2)}
-          </div>
+          <div className="text-sm font-mono text-red-400/70">R$ {stopLossValue.toFixed(2)}</div>
           <div className="w-full bg-slate-700 h-1 mt-2 rounded-full overflow-hidden">
              <div className="bg-red-500 h-full transition-all" style={{ width: `${Math.min(100, Math.max(0, (sessionProfit / Math.abs(stopLossValue)) * 100))}%` }}></div>
           </div>
         </div>
       </div>
 
-      {/* Time Alert Overlay/Banner */}
+      {/* Time Alert */}
       {isOverTime && (
         <div className="bg-red-600 text-white p-3 rounded-lg flex items-center justify-center gap-3 animate-pulse shadow-[0_0_15px_rgba(239,68,68,0.5)]">
             <Volume2 className="w-5 h-5" />
-            <span className="font-bold uppercase text-sm">Tempo Esgotado (30min)! Fadiga mental gera prejuízo. Encerre agora.</span>
+            <span className="font-bold uppercase text-sm">Tempo Esgotado! Encerre agora.</span>
         </div>
       )}
 
@@ -600,36 +518,32 @@ export const SessionManager: React.FC<Props> = ({
       {hitStopLoss && (
         <div className="bg-red-900/30 border border-red-500 text-red-200 p-4 rounded-lg flex items-center gap-3 animate-pulse">
           <AlertTriangle className="w-6 h-6" />
-          <div>
-            <strong>PARE IMEDIATAMENTE!</strong> Você atingiu o Stop Loss. Volte amanhã.
-          </div>
+          <div><strong>PARE IMEDIATAMENTE!</strong> Stop Loss atingido.</div>
         </div>
       )}
        {hitDailyGoal && (
         <div className="bg-emerald-900/30 border border-emerald-500 text-emerald-200 p-4 rounded-lg flex items-center gap-3 animate-bounce">
           <Trophy className="w-6 h-6 text-aviator-gold" />
-          <div>
-            <strong>META BATIDA!</strong> Você fez R$ {sessionProfit.toFixed(2)}. Pare e garanta o lucro.
-          </div>
+          <div><strong>META BATIDA!</strong> Pare e garanta o lucro.</div>
         </div>
       )}
 
-      {/* Input Area */}
+      {/* GAME CONTROLS */}
       <div className="bg-slate-800/50 p-4 rounded-xl border border-slate-700">
         <h4 className="text-sm font-semibold text-slate-300 mb-3 flex items-center gap-2">
           <PlusCircle className="w-4 h-4" /> Registrar Rodada
         </h4>
         
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
+          {/* Strategy & Config */}
           <div>
-            <label className="text-xs text-slate-400 flex justify-between items-center">
+            <label className="text-xs text-slate-400 flex justify-between items-center mb-1">
                 <span>Estratégia</span>
                 <button onClick={() => setShowStrategyConfig(!showStrategyConfig)} className="text-aviator-gold hover:text-white">
                     <Settings className="w-3 h-3" />
                 </button>
             </label>
             
-            {/* Config Popover */}
             {showStrategyConfig && (
                 <div className="absolute z-20 bg-slate-800 border border-slate-600 p-3 rounded-lg mt-1 shadow-xl w-72">
                     <h5 className="text-xs font-bold text-white mb-2 flex items-center gap-2"><Settings className="w-3 h-3"/> Configurar Padrões</h5>
@@ -647,7 +561,7 @@ export const SessionManager: React.FC<Props> = ({
                             <p className="text-[10px] font-bold text-slate-300 mb-1">Estratégia Duas Apostas</p>
                             <div className="grid grid-cols-2 gap-2">
                               <div>
-                                <label className="text-[10px] text-slate-400">Aposta 1 (Cobertura)</label>
+                                <label className="text-[10px] text-slate-400">Cobertura (x)</label>
                                 <input 
                                     type="number" step="0.1"
                                     value={twoBetsCover}
@@ -656,7 +570,7 @@ export const SessionManager: React.FC<Props> = ({
                                 />
                               </div>
                               <div>
-                                <label className="text-[10px] text-slate-400">Aposta 2 (Alvo)</label>
+                                <label className="text-[10px] text-slate-400">Alvo (x)</label>
                                 <input 
                                     type="number" step="0.1"
                                     value={twoBetsTarget}
@@ -666,12 +580,7 @@ export const SessionManager: React.FC<Props> = ({
                               </div>
                             </div>
                         </div>
-                        <button 
-                            onClick={() => setShowStrategyConfig(false)}
-                            className="w-full bg-aviator-gold text-black text-xs font-bold py-1 rounded mt-2"
-                        >
-                            Salvar
-                        </button>
+                        <button onClick={() => setShowStrategyConfig(false)} className="w-full bg-aviator-gold text-black text-xs font-bold py-1 rounded mt-2">Salvar</button>
                     </div>
                 </div>
             )}
@@ -684,40 +593,37 @@ export const SessionManager: React.FC<Props> = ({
               {STRATEGIES.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
             </select>
           </div>
+
+          {/* Bet Amount & Smart Recovery */}
           <div>
-            <label className="text-xs text-slate-400 relative flex justify-between items-center pr-2">
-                <span>Valor da Aposta (Rec: {recommendedBet})</span>
-                <button 
-                    onClick={() => setShowRecoveryModal(true)}
-                    className="text-slate-500 hover:text-blue-400 transition-colors flex items-center gap-1 text-[10px] uppercase font-bold border border-slate-700 px-1 rounded"
-                    title="Calculadora Smart Recovery"
-                >
+            <label className="text-xs text-slate-400 relative flex justify-between items-center pr-2 mb-1">
+                <span>Valor (Rec: {recommendedBet})</span>
+                <button onClick={() => setShowRecoveryModal(true)} className="text-slate-500 hover:text-blue-400 flex items-center gap-1 text-[10px] uppercase font-bold border border-slate-700 px-1 rounded">
                     <Calculator className="w-3 h-3" /> Gale
                 </button>
             </label>
             <input 
-              type="number" 
-              placeholder={recommendedBet}
+              type="number" placeholder={recommendedBet}
               value={betInput}
               onChange={(e) => setBetInput(e.target.value)}
               className="w-full bg-slate-900 border border-slate-700 rounded-lg p-2 text-white focus:ring-1 focus:ring-aviator-red outline-none"
             />
           </div>
+
+          {/* Multiplier & Quick Actions */}
           <div>
-            <label className="text-xs text-slate-400">Multiplicador Alvo</label>
+            <label className="text-xs text-slate-400 mb-1 block">Multiplicador Alvo</label>
             <div className="flex flex-col gap-2">
                 <input 
-                type="number" 
-                step="0.01"
-                value={multInput}
-                onChange={(e) => setMultInput(e.target.value)}
-                className="w-full bg-slate-900 border border-slate-700 rounded-lg p-2 text-white focus:ring-1 focus:ring-aviator-red outline-none font-bold text-center"
+                  type="number" step="0.01"
+                  value={multInput}
+                  onChange={(e) => setMultInput(e.target.value)}
+                  className="w-full bg-slate-900 border border-slate-700 rounded-lg p-2 text-white focus:ring-1 focus:ring-aviator-red outline-none font-bold text-center"
                 />
                 <div className="flex gap-1 justify-between">
                     {quickMultipliers.map(m => (
                         <button 
-                            key={m}
-                            onClick={() => setMultInput(m)}
+                            key={m} onClick={() => setMultInput(m)}
                             className={`text-[10px] py-1 px-2 rounded border border-slate-600 hover:bg-slate-700 hover:border-aviator-gold transition-colors ${multInput === m ? 'bg-slate-700 border-aviator-gold text-aviator-gold' : 'text-slate-400'}`}
                         >
                             {m}x
@@ -731,32 +637,28 @@ export const SessionManager: React.FC<Props> = ({
         <div className="grid grid-cols-2 gap-4">
           <button 
             onClick={() => handleAddRound(true)}
-            className="bg-emerald-600 hover:bg-emerald-500 text-white font-bold py-3 rounded-lg flex justify-center items-center gap-2 transition-colors shadow-lg shadow-emerald-900/20 active:scale-[0.98]"
+            className="bg-emerald-600 hover:bg-emerald-500 text-white font-bold py-4 rounded-lg flex justify-center items-center gap-2 transition-colors shadow-lg active:scale-[0.98]"
           >
-            <TrendingUp className="w-5 h-5" /> GREEN (Ganhou)
+            <TrendingUp className="w-6 h-6" /> GREEN
           </button>
           <button 
              onClick={() => handleAddRound(false)}
-            className="bg-slate-700 hover:bg-red-600 text-white font-bold py-3 rounded-lg flex justify-center items-center gap-2 transition-colors shadow-lg shadow-red-900/20 active:scale-[0.98]"
+            className="bg-slate-700 hover:bg-red-600 text-white font-bold py-4 rounded-lg flex justify-center items-center gap-2 transition-colors shadow-lg active:scale-[0.98]"
           >
-            <TrendingDown className="w-5 h-5" /> LOSS (Perdeu)
+            <TrendingDown className="w-6 h-6" /> LOSS
           </button>
         </div>
         
-        <button 
-             onClick={handleTwoBetsQuickWin}
-             className="w-full mt-3 border border-slate-600 bg-slate-800/50 hover:bg-slate-700 text-slate-300 hover:text-white font-bold py-2 rounded-lg flex justify-center items-center gap-2 transition-all text-xs uppercase tracking-wider shadow-sm"
-          >
+        <button onClick={handleTwoBetsQuickWin} className="w-full mt-3 border border-slate-600 bg-slate-800/50 hover:bg-slate-700 text-slate-300 hover:text-white font-bold py-2 rounded-lg flex justify-center items-center gap-2 transition-all text-xs uppercase tracking-wider shadow-sm">
              <Zap className="w-4 h-4 text-aviator-gold" /> Win Rápido: Duas Apostas ({twoBetsCover}x & {twoBetsTarget}x)
         </button>
-
       </div>
 
-      {/* History (Last 5) */}
+      {/* HISTORY */}
       <div className="space-y-2">
         <h4 className="text-xs uppercase tracking-wider text-slate-500">Últimas Rodadas</h4>
         {rounds.slice().reverse().slice(0, 5).map(r => (
-          <div key={r.id} className="flex justify-between items-center bg-slate-800 p-2 rounded border-l-4 border-slate-700" style={{ borderColor: r.win ? '#10B981' : '#EF4444' }}>
+          <div key={r.id} className="flex justify-between items-center bg-slate-800 p-2 rounded border-l-4" style={{ borderColor: r.win ? '#10B981' : '#EF4444' }}>
             <div className="flex flex-col">
                  <span className="text-xs text-slate-400">{new Date(r.timestamp).toLocaleTimeString()}</span>
                  <span className="text-[10px] text-slate-500">{r.multiplier > 0 ? r.multiplier.toFixed(2) : '-'}x</span>
@@ -770,11 +672,8 @@ export const SessionManager: React.FC<Props> = ({
         {rounds.length === 0 && <p className="text-center text-slate-600 text-sm py-2">Nenhuma rodada registrada.</p>}
       </div>
 
-      <button 
-        onClick={handleEndClick}
-        className="w-full border border-slate-700 hover:bg-slate-800 text-slate-300 font-bold py-3 rounded-lg flex justify-center items-center gap-2 mt-4 transition-colors"
-      >
-        <Square className="w-4 h-4 fill-current" /> ENCERRAR SESSÃO E SALVAR
+      <button onClick={handleEndClick} className="w-full border border-slate-700 hover:bg-slate-800 text-slate-300 font-bold py-3 rounded-lg flex justify-center items-center gap-2 mt-4 transition-colors">
+        <Square className="w-4 h-4 fill-current" /> ENCERRAR SESSÃO
       </button>
     </div>
   );

@@ -1,26 +1,27 @@
-import React, { useState, useEffect } from 'react';
-import { Minimize2, Maximize2, ExternalLink, X, BarChart2, WifiOff } from 'lucide-react';
+import React from 'react';
+import { Minimize2, Maximize2, ExternalLink, BarChart2, Eye, ArrowLeft, LayoutTemplate, X, ArrowDownLeft } from 'lucide-react';
+
+export type AnalysisMode = 'closed' | 'minimized' | 'split' | 'full';
 
 interface Props {
-  isOpen: boolean;
-  onToggle: () => void;
+  mode: AnalysisMode;
+  setMode: (mode: AnalysisMode) => void;
+  isSessionActive?: boolean;
 }
 
-export const ExternalAnalysis: React.FC<Props> = ({ isOpen, onToggle }) => {
-  const [iframeError, setIframeError] = useState(false);
+export const ExternalAnalysis: React.FC<Props> = ({ mode, setMode, isSessionActive = true }) => {
   const ANALYSIS_URL = "https://www.tipminer.com/br/historico/sortenabet/aviator";
 
-  // Reset error state when opening
-  useEffect(() => {
-    if (isOpen) setIframeError(false);
-  }, [isOpen]);
+  // Se estiver fechado, não renderiza nada (para o Recon Mode que pode ser fechado totalmente)
+  if (mode === 'closed') return null;
 
-  if (!isOpen) {
+  // --- MODO MINIMIZADO (FAB) ---
+  if (mode === 'minimized') {
     return (
       <button
-        onClick={onToggle}
+        onClick={() => setMode(isSessionActive ? 'split' : 'full')}
         className="fixed bottom-24 right-4 z-40 bg-blue-600 hover:bg-blue-500 text-white p-4 rounded-full shadow-[0_0_20px_rgba(37,99,235,0.5)] border-2 border-blue-400 transition-all active:scale-95 animate-bounce-slow"
-        title="Abrir Análise TipMiner"
+        title="Abrir Análise"
       >
         <BarChart2 className="w-6 h-6" />
         <span className="absolute -top-2 -right-2 flex h-4 w-4">
@@ -31,72 +32,91 @@ export const ExternalAnalysis: React.FC<Props> = ({ isOpen, onToggle }) => {
     );
   }
 
+  // --- MODOS VISÍVEIS (SPLIT OU FULL) ---
+  // Determinamos as classes de layout baseadas no modo
+  const containerClasses = mode === 'full' 
+    ? "fixed inset-0 z-50 flex flex-col bg-slate-950/95 backdrop-blur-sm animate-in fade-in duration-200"
+    : "relative w-full h-[300px] md:h-[400px] mb-6 rounded-xl overflow-hidden border border-slate-700 shadow-xl flex flex-col bg-slate-900 animate-in slide-in-from-top-4 duration-300";
+
   return (
-    <div className="fixed inset-0 z-50 flex flex-col bg-slate-950/95 backdrop-blur-sm animate-in fade-in slide-in-from-bottom-10">
+    <div className={containerClasses}>
       {/* Header da Análise */}
-      <div className="bg-slate-900 border-b border-blue-900 p-3 flex items-center justify-between shadow-lg">
-        <div className="flex items-center gap-2">
-            <div className="bg-blue-500/20 p-2 rounded-lg">
-                <BarChart2 className="w-5 h-5 text-blue-400" />
+      <div className="bg-slate-900 border-b border-blue-900/50 p-2 md:p-3 flex items-center justify-between shadow-lg shrink-0">
+        <div className="flex items-center gap-2 overflow-hidden">
+            <div className="bg-blue-500/20 p-1.5 rounded-lg shrink-0">
+                {isSessionActive ? <BarChart2 className="w-4 h-4 text-blue-400" /> : <Eye className="w-4 h-4 text-blue-400" />}
             </div>
-            <div>
-                <h3 className="text-white font-bold text-sm uppercase tracking-wider">Centro de Inteligência</h3>
-                <p className="text-[10px] text-slate-400">TipMiner: SorteNaBet Aviator</p>
+            <div className="min-w-0">
+                <h3 className="text-white font-bold text-xs uppercase tracking-wider truncate">
+                    {isSessionActive ? 'C.I.T. (Ao Vivo)' : 'Reconhecimento'}
+                </h3>
             </div>
         </div>
         
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-1 md:gap-2">
+            {/* Botões de Controle de View */}
+            {mode === 'full' ? (
+                <button 
+                    onClick={() => setMode('split')}
+                    className="p-2 text-slate-400 hover:text-white hover:bg-slate-800 rounded transition-colors hidden md:block"
+                    title="Dividir Tela"
+                >
+                    <ArrowDownLeft className="w-4 h-4" />
+                </button>
+            ) : (
+                <button 
+                    onClick={() => setMode('full')}
+                    className="p-2 text-slate-400 hover:text-white hover:bg-slate-800 rounded transition-colors"
+                    title="Tela Cheia"
+                >
+                    <Maximize2 className="w-4 h-4" />
+                </button>
+            )}
+
             <a 
                 href={ANALYSIS_URL} 
                 target="_blank" 
                 rel="noopener noreferrer"
-                className="bg-slate-800 hover:bg-slate-700 text-slate-300 p-2 rounded-lg text-xs flex items-center gap-1 transition-colors"
+                className="hidden md:flex bg-slate-800 hover:bg-slate-700 text-slate-300 p-2 rounded text-[10px] items-center gap-1 transition-colors"
             >
-                <ExternalLink className="w-4 h-4" /> <span className="hidden md:inline">Abrir no Navegador</span>
+                <ExternalLink className="w-3 h-3" /> Web
             </a>
+
             <button 
-                onClick={onToggle}
-                className="bg-emerald-600 hover:bg-emerald-500 text-white px-4 py-2 rounded-lg font-bold text-xs flex items-center gap-2 shadow-lg shadow-emerald-900/20 transition-all active:scale-95"
+                onClick={() => setMode('minimized')}
+                className="p-2 text-slate-400 hover:text-white hover:bg-slate-800 rounded transition-colors"
+                title="Minimizar"
             >
-                <Minimize2 className="w-4 h-4" /> MINIMIZAR E JOGAR
+                <Minimize2 className="w-4 h-4" />
             </button>
+
+            {!isSessionActive && (
+                 <button 
+                    onClick={() => setMode('closed')}
+                    className="p-2 text-red-400 hover:text-white hover:bg-red-900/50 rounded transition-colors"
+                    title="Fechar"
+                >
+                    <X className="w-4 h-4" />
+                </button>
+            )}
         </div>
       </div>
 
-      {/* Área do Site (Iframe) */}
-      <div className="flex-1 relative w-full h-full bg-white">
-        {/* Loading / Fallback UI */}
-        <div className="absolute inset-0 flex flex-col items-center justify-center bg-slate-100 text-slate-900 z-0">
-            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mb-4"></div>
-            <p className="text-sm font-bold text-slate-600">Carregando dados de mercado...</p>
-            <p className="text-xs text-slate-500 mt-2 max-w-xs text-center">
-                Se o site não aparecer em 5 segundos, ele pode estar bloqueando conexões externas.
-            </p>
-            <a 
-                href={ANALYSIS_URL} 
-                target="_blank" 
-                rel="noopener noreferrer"
-                className="mt-4 bg-blue-600 text-white px-4 py-2 rounded text-sm font-bold shadow hover:bg-blue-700 transition-colors"
-            >
-                Abrir Site Diretamente
-            </a>
-        </div>
-
-        <iframe 
+      {/* Iframe Area */}
+      <div className="flex-1 relative bg-slate-950 w-full h-full">
+          <iframe 
             src={ANALYSIS_URL}
-            className="absolute inset-0 w-full h-full z-10"
-            frameBorder="0"
-            allowFullScreen
-            onError={() => setIframeError(true)}
-            title="TipMiner Analysis"
-        />
-      </div>
-
-      {/* Footer / Dica Tática */}
-      <div className="bg-slate-900 p-2 text-center border-t border-slate-800">
-          <p className="text-xs text-yellow-500 font-medium animate-pulse">
-              ⚠ Dica Tática: Analise o padrão das últimas 10 velas antes de realizar sua entrada.
-          </p>
+            className="absolute inset-0 w-full h-full border-0"
+            title="Aviator Analysis"
+            allow="fullscreen"
+          />
+          
+          {/* Loading Fallback */}
+          <div className="absolute inset-0 pointer-events-none flex items-center justify-center -z-10">
+              <div className="text-slate-500 text-xs animate-pulse flex items-center gap-2">
+                  <BarChart2 className="w-4 h-4" /> Carregando TipMiner...
+              </div>
+          </div>
       </div>
     </div>
   );
