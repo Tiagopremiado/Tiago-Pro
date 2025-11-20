@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { DailySession, Round } from '../types';
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, BarChart, Bar, Cell, ReferenceLine } from 'recharts';
-import { TrendingUp, Calendar, Calculator, DollarSign, ChevronRight, CalendarDays, Clock, BarChart3, Percent, AlertTriangle, ChevronDown, ChevronUp, Search, Trash2, Zap, Target, TrendingDown, Bomb, Wallet } from 'lucide-react';
+import { TrendingUp, Calendar, Calculator, DollarSign, ChevronRight, CalendarDays, Clock, BarChart3, Percent, AlertTriangle, ChevronDown, ChevronUp, Search, Trash2, Zap, TrendingDown, Bomb, Wallet } from 'lucide-react';
 
 interface Props {
   sessions: DailySession[];
@@ -108,7 +108,7 @@ export const Analytics: React.FC<Props> = ({ sessions, initialBankroll, dailyGoa
       }
   }
 
-  // --- TEMPORAL PATTERN ANALYSIS (REFACTORED) ---
+  // --- TEMPORAL PATTERN ANALYSIS ---
   const processTimeData = () => {
     // Initialize 24h buckets
     const hours = Array.from({ length: 24 }, (_, i) => ({
@@ -130,44 +130,63 @@ export const Analytics: React.FC<Props> = ({ sessions, initialBankroll, dailyGoa
         rate: 0
     }));
 
+    // Initialize Month Day buckets (1-31)
+    const daysOfMonth = Array.from({ length: 31 }, (_, i) => ({
+        name: `${i + 1}`, // Day 1, 2, ... 31
+        dayIndex: i,
+        profit: 0,
+        wins: 0,
+        total: 0,
+        rate: 0
+    }));
+
     // Flatten all rounds from all sessions
     const allRounds: Round[] = sessions.flatMap(s => s.roundsDetail || []);
 
     allRounds.forEach(r => {
         const date = new Date(r.timestamp);
         const h = date.getHours();
-        const d = date.getDay();
+        const d = date.getDay(); // 0-6
+        const dom = date.getDate() - 1; // 1-31 -> 0-30 index
 
         // Update Hourly
-        hours[h].profit += r.profit;
-        hours[h].total += 1;
-        if (r.win) hours[h].wins += 1;
+        if(hours[h]) {
+            hours[h].profit += r.profit;
+            hours[h].total += 1;
+            if (r.win) hours[h].wins += 1;
+        }
 
-        // Update Daily
-        daysOfWeek[d].profit += r.profit;
-        daysOfWeek[d].total += 1;
-        if (r.win) daysOfWeek[d].wins += 1;
+        // Update Daily (Week)
+        if(daysOfWeek[d]) {
+            daysOfWeek[d].profit += r.profit;
+            daysOfWeek[d].total += 1;
+            if (r.win) daysOfWeek[d].wins += 1;
+        }
+
+        // Update Month Day
+        if(daysOfMonth[dom]) {
+            daysOfMonth[dom].profit += r.profit;
+            daysOfMonth[dom].total += 1;
+            if (r.win) daysOfMonth[dom].wins += 1;
+        }
     });
 
     // Calculate Rates
-    const hoursWithStats = hours.map(h => ({
-        ...h,
-        rate: h.total > 0 ? (h.wins / h.total) * 100 : 0
-    }));
+    const calcRate = (item: any) => ({
+        ...item,
+        rate: item.total > 0 ? (item.wins / item.total) * 100 : 0
+    });
 
-    const daysWithStats = daysOfWeek.map(d => ({
-        ...d,
-        rate: d.total > 0 ? (d.wins / d.total) * 100 : 0
-    }));
+    const hoursWithStats = hours.map(calcRate);
+    const daysWithStats = daysOfWeek.map(calcRate);
+    const monthDaysWithStats = daysOfMonth.map(calcRate);
 
     // Sort for Best (Highest Profit)
     const bestHourProfit = [...hoursWithStats].sort((a, b) => b.profit - a.profit)[0];
-    const bestDayProfit = [...daysWithStats].sort((a, b) => b.profit - a.profit)[0];
-
+    
     // Sort for Best (Highest Win Rate) - min 2 rounds to be significant
     const bestHourRate = [...hoursWithStats].filter(h => h.total >= 2).sort((a, b) => b.rate - a.rate)[0] || hoursWithStats[0];
-    const bestDayRate = [...daysWithStats].filter(d => d.total >= 2).sort((a, b) => b.rate - a.rate)[0] || daysWithStats[0];
-
+    
     // Sort for Worst (Lowest Profit / Highest Loss)
     const worstHourProfit = [...hoursWithStats].sort((a, b) => a.profit - b.profit)[0];
     const worstHourRate = [...hoursWithStats].filter(h => h.total >= 2).sort((a, b) => a.rate - b.rate)[0];
@@ -175,10 +194,9 @@ export const Analytics: React.FC<Props> = ({ sessions, initialBankroll, dailyGoa
     return { 
         hours: hoursWithStats, 
         daysOfWeek: daysWithStats, 
+        daysOfMonth: monthDaysWithStats,
         bestHourProfit, 
-        bestDayProfit, 
         bestHourRate,
-        bestDayRate, 
         worstHourProfit,
         worstHourRate,
         totalRounds: allRounds.length 
@@ -273,7 +291,7 @@ export const Analytics: React.FC<Props> = ({ sessions, initialBankroll, dailyGoa
               </g>
           );
       }
-      return null; // Hide dots for regular points to keep chart clean
+      return null;
   };
 
   return (
@@ -436,7 +454,7 @@ export const Analytics: React.FC<Props> = ({ sessions, initialBankroll, dailyGoa
         </div>
       </div>
 
-      {/* --- RADAR DE PERFORMANCE TEMPORAL (REDEFINED) --- */}
+      {/* --- RADAR DE PERFORMANCE TEMPORAL (TRIPLE CHARTS) --- */}
       {timeStats.totalRounds > 0 && (
           <div className="bg-slate-900 rounded-xl border border-slate-800 p-6 space-y-8 shadow-lg relative overflow-hidden">
              {/* Header */}
@@ -480,7 +498,7 @@ export const Analytics: React.FC<Props> = ({ sessions, initialBankroll, dailyGoa
                              <div>
                                  <div className="flex items-center gap-2 mb-1">
                                     <Clock className="w-4 h-4 text-emerald-400" />
-                                    <span className="text-xs font-bold text-emerald-400 uppercase tracking-widest">Janela de Oportunidade</span>
+                                    <span className="text-xs font-bold text-emerald-400 uppercase tracking-widest">Melhor Horário</span>
                                  </div>
                                  <span className="text-4xl font-black text-white block mt-2">
                                      {timeMetric === 'profit' ? timeStats.bestHourProfit?.name : timeStats.bestHourRate?.name}
@@ -489,7 +507,7 @@ export const Analytics: React.FC<Props> = ({ sessions, initialBankroll, dailyGoa
                          </div>
                          <div className="mt-4 pt-4 border-t border-emerald-500/20 flex justify-between items-end">
                              <div>
-                                <p className="text-[10px] text-slate-400 uppercase">Resultado no período</p>
+                                <p className="text-[10px] text-slate-400 uppercase">Resultado</p>
                                 <p className="text-lg font-bold text-white">
                                     {timeMetric === 'profit' 
                                         ? `+ R$ ${timeStats.bestHourProfit?.profit.toFixed(2)}`
@@ -527,7 +545,7 @@ export const Analytics: React.FC<Props> = ({ sessions, initialBankroll, dailyGoa
                          </div>
                          <div className="mt-4 pt-4 border-t border-red-500/20 flex justify-between items-end">
                              <div>
-                                <p className="text-[10px] text-slate-400 uppercase">Prejuízo no período</p>
+                                <p className="text-[10px] text-slate-400 uppercase">Prejuízo / Pior Taxa</p>
                                 <p className="text-lg font-bold text-red-400">
                                     {timeMetric === 'profit' 
                                         ? (timeStats.worstHourProfit?.profit < 0 ? `R$ ${timeStats.worstHourProfit?.profit.toFixed(2)}` : 'Sem prejuízos')
@@ -546,239 +564,362 @@ export const Analytics: React.FC<Props> = ({ sessions, initialBankroll, dailyGoa
                  </div>
              </div>
 
-             {/* Hourly Chart */}
-             <div className="bg-slate-950 p-4 rounded-lg border border-slate-800">
-                 <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-6 gap-4">
-                     <h3 className="text-sm font-bold text-slate-200 flex items-center gap-2">
-                         <Clock className="w-4 h-4 text-slate-500" /> Performance Hora a Hora (24h)
-                     </h3>
-                     <div className="flex items-center gap-3 text-[10px] bg-slate-900 p-2 rounded border border-slate-800">
-                         <div className="flex items-center gap-1.5"><div className="w-2 h-2 rounded-full bg-emerald-500"></div>Lucro / Alta Taxa</div>
-                         <div className="flex items-center gap-1.5"><div className="w-2 h-2 rounded-full bg-red-500"></div>Prejuízo / Baixa Taxa</div>
-                     </div>
+             {/* COMPARATIVE CHARTS CONTAINER */}
+             <div className="space-y-6">
+                 
+                 {/* TOP ROW: HOURLY & WEEKLY */}
+                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                    {/* CHART 1: HOURLY PERFORMANCE */}
+                    <div className="bg-slate-950 p-4 rounded-lg border border-slate-800">
+                        <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-6 gap-4">
+                            <h3 className="text-sm font-bold text-slate-200 flex items-center gap-2">
+                                <Clock className="w-4 h-4 text-slate-500" /> Performance por Horário (24h)
+                            </h3>
+                        </div>
+
+                        <div className="h-56 w-full">
+                            <ResponsiveContainer width="100%" height="100%">
+                                <BarChart data={timeStats.hours} margin={{top: 10, right: 0, left: -20, bottom: 0}}>
+                                    <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" vertical={false} />
+                                    <XAxis 
+                                        dataKey="name" 
+                                        axisLine={false} 
+                                        tickLine={false} 
+                                        tick={{fill: '#94a3b8', fontSize: 10, fontWeight: 500}} 
+                                        interval={3}
+                                    />
+                                    <YAxis 
+                                        axisLine={false} 
+                                        tickLine={false} 
+                                        tick={{fill: '#94a3b8', fontSize: 10}}
+                                    />
+                                    <Tooltip content={<CustomBarTooltip />} cursor={{fill: 'rgba(255,255,255,0.05)'}} />
+                                    <Bar dataKey={timeMetric} radius={[4, 4, 0, 0]} maxBarSize={40}>
+                                        {timeStats.hours.map((entry, index) => (
+                                            <Cell 
+                                                key={`cell-${index}`} 
+                                                fill={
+                                                    timeMetric === 'rate' 
+                                                        ? (entry.rate >= 50 ? '#10B981' : '#EF4444')
+                                                        : (entry.profit >= 0 ? '#10B981' : '#EF4444')
+                                                }
+                                                fillOpacity={timeMetric === 'rate' ? (entry.total > 0 ? 1 : 0.1) : 1}
+                                            />
+                                        ))}
+                                    </Bar>
+                                    <ReferenceLine y={0} stroke="#334155" />
+                                </BarChart>
+                            </ResponsiveContainer>
+                        </div>
+                    </div>
+
+                    {/* CHART 2: WEEKLY PERFORMANCE */}
+                    <div className="bg-slate-950 p-4 rounded-lg border border-slate-800">
+                        <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-6 gap-4">
+                            <h3 className="text-sm font-bold text-slate-200 flex items-center gap-2">
+                                <Calendar className="w-4 h-4 text-slate-500" /> Performance Semanal (7 Dias)
+                            </h3>
+                        </div>
+
+                        <div className="h-56 w-full">
+                            <ResponsiveContainer width="100%" height="100%">
+                                <BarChart data={timeStats.daysOfWeek} margin={{top: 10, right: 0, left: -20, bottom: 0}}>
+                                    <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" vertical={false} />
+                                    <XAxis 
+                                        dataKey="name" 
+                                        axisLine={false} 
+                                        tickLine={false} 
+                                        tick={{fill: '#94a3b8', fontSize: 10, fontWeight: 500}} 
+                                    />
+                                    <YAxis 
+                                        axisLine={false} 
+                                        tickLine={false} 
+                                        tick={{fill: '#94a3b8', fontSize: 10}}
+                                    />
+                                    <Tooltip content={<CustomBarTooltip />} cursor={{fill: 'rgba(255,255,255,0.05)'}} />
+                                    <Bar dataKey={timeMetric} radius={[4, 4, 0, 0]} maxBarSize={40}>
+                                        {timeStats.daysOfWeek.map((entry, index) => (
+                                            <Cell 
+                                                key={`cell-${index}`} 
+                                                fill={
+                                                    timeMetric === 'rate' 
+                                                        ? (entry.rate >= 50 ? '#10B981' : '#EF4444')
+                                                        : (entry.profit >= 0 ? '#10B981' : '#EF4444')
+                                                }
+                                                fillOpacity={timeMetric === 'rate' ? (entry.total > 0 ? 1 : 0.1) : 1}
+                                            />
+                                        ))}
+                                    </Bar>
+                                    <ReferenceLine y={0} stroke="#334155" />
+                                </BarChart>
+                            </ResponsiveContainer>
+                        </div>
+                    </div>
                  </div>
 
-                 <div className="h-64 w-full">
-                     <ResponsiveContainer width="100%" height="100%">
-                         <BarChart data={timeStats.hours} margin={{top: 10, right: 0, left: -20, bottom: 0}}>
-                             <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" vertical={false} />
-                             <XAxis 
-                                 dataKey="name" 
-                                 axisLine={false} 
-                                 tickLine={false} 
-                                 tick={{fill: '#94a3b8', fontSize: 10, fontWeight: 500}} 
-                                 interval={2}
-                             />
-                             <YAxis 
-                                 axisLine={false} 
-                                 tickLine={false} 
-                                 tick={{fill: '#94a3b8', fontSize: 10}}
-                             />
-                             <Tooltip content={<CustomBarTooltip />} cursor={{fill: 'rgba(255,255,255,0.05)'}} />
-                             <Bar dataKey={timeMetric} radius={[4, 4, 0, 0]} maxBarSize={40}>
-                                 {timeStats.hours.map((entry, index) => (
-                                     <Cell 
-                                         key={`cell-${index}`} 
-                                         fill={
-                                             timeMetric === 'rate' 
-                                                 ? (entry.rate >= 50 ? '#10B981' : '#EF4444')
-                                                 : (entry.profit >= 0 ? '#10B981' : '#EF4444')
-                                         }
-                                         fillOpacity={timeMetric === 'rate' ? (entry.total > 0 ? 1 : 0.1) : 1}
-                                     />
-                                 ))}
-                             </Bar>
-                             <ReferenceLine y={0} stroke="#334155" />
-                         </BarChart>
-                     </ResponsiveContainer>
-                 </div>
+                 {/* CHART 3: MONTHLY PERFORMANCE (30 DAYS) */}
+                 <div className="bg-slate-950 p-4 rounded-lg border border-slate-800">
+                        <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-6 gap-4">
+                            <h3 className="text-sm font-bold text-slate-200 flex items-center gap-2">
+                                <CalendarDays className="w-4 h-4 text-slate-500" /> Ciclo Mensal (Dia 1 ao 31)
+                            </h3>
+                        </div>
+
+                        <div className="h-56 w-full">
+                            <ResponsiveContainer width="100%" height="100%">
+                                <BarChart data={timeStats.daysOfMonth} margin={{top: 10, right: 0, left: -20, bottom: 0}}>
+                                    <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" vertical={false} />
+                                    <XAxis 
+                                        dataKey="name" 
+                                        axisLine={false} 
+                                        tickLine={false} 
+                                        tick={{fill: '#94a3b8', fontSize: 10, fontWeight: 500}} 
+                                        interval={2}
+                                    />
+                                    <YAxis 
+                                        axisLine={false} 
+                                        tickLine={false} 
+                                        tick={{fill: '#94a3b8', fontSize: 10}}
+                                    />
+                                    <Tooltip content={<CustomBarTooltip />} cursor={{fill: 'rgba(255,255,255,0.05)'}} />
+                                    <Bar dataKey={timeMetric} radius={[4, 4, 0, 0]} maxBarSize={40}>
+                                        {timeStats.daysOfMonth.map((entry, index) => (
+                                            <Cell 
+                                                key={`cell-${index}`} 
+                                                fill={
+                                                    timeMetric === 'rate' 
+                                                        ? (entry.rate >= 50 ? '#10B981' : '#EF4444')
+                                                        : (entry.profit >= 0 ? '#10B981' : '#EF4444')
+                                                }
+                                                fillOpacity={timeMetric === 'rate' ? (entry.total > 0 ? 1 : 0.1) : 1}
+                                            />
+                                        ))}
+                                    </Bar>
+                                    <ReferenceLine y={0} stroke="#334155" />
+                                </BarChart>
+                            </ResponsiveContainer>
+                        </div>
+                    </div>
              </div>
           </div>
       )}
 
+      {/* --- GRÁFICO DE EVOLUÇÃO (PROJECTION VS REALITY) --- */}
+      <div className="bg-slate-950 rounded-xl border border-slate-800 shadow-xl p-4 md:p-6 relative overflow-hidden">
+        <div className="flex items-center justify-between mb-8">
+            <div>
+                <div className="flex items-center gap-2 text-emerald-400 font-bold text-xs uppercase tracking-widest mb-1">
+                    <TrendingUp className="w-4 h-4" /> Evolução Patrimonial
+                </div>
+                <h2 className="text-2xl font-black text-white">Projeção vs. Realidade</h2>
+            </div>
+            <div className="flex gap-4 text-xs text-slate-400 font-mono">
+                <div className="flex items-center gap-2"><span className="w-3 h-1 bg-emerald-500 rounded-full"></span> Real</div>
+                <div className="flex items-center gap-2"><span className="w-3 h-1 bg-aviator-gold rounded-full"></span> Meta</div>
+            </div>
+        </div>
 
-      {/* --- GRÁFICO DE EVOLUÇÃO (UPDATED WITH DEPOSIT LINES AND DOTS) --- */}
-      <div className="bg-slate-900 p-4 rounded-xl border border-slate-800 shadow-lg">
-        <h2 className="text-lg font-bold text-white mb-4 flex items-center gap-2">
-          <TrendingUp className="w-5 h-5 text-emerald-500" /> Evolução: Real vs Projetado
-        </h2>
-        <div className="h-72 w-full bg-slate-950/50 rounded-lg p-2 border border-slate-800/50 shadow-inner">
-          <ResponsiveContainer width="100%" height="100%">
-            <AreaChart data={chartData} margin={{ top: 20, right: 10, left: -20, bottom: 0 }}>
-              <defs>
-                <linearGradient id="colorReal" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="5%" stopColor="#10B981" stopOpacity={0.4}/>
-                  <stop offset="95%" stopColor="#10B981" stopOpacity={0.05}/>
-                </linearGradient>
-                <linearGradient id="colorIdeal" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="5%" stopColor="#F59E0B" stopOpacity={0.2}/>
-                  <stop offset="95%" stopColor="#F59E0B" stopOpacity={0}/>
-                </linearGradient>
-              </defs>
-              <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" vertical={false} />
-              <XAxis 
-                dataKey="day" 
-                stroke="#475569" 
-                fontSize={10} 
-                tickFormatter={(val) => `D${val}`} 
-                tickLine={false}
-                axisLine={false}
-              />
-              <YAxis 
-                stroke="#475569" 
-                fontSize={10} 
-                tickLine={false}
-                axisLine={false}
-                tickFormatter={(val) => `${val}`}
-              />
-              <Tooltip content={<CustomChartTooltip />} />
-              
-              {/* Renderiza linhas verticais onde houver Aporte */}
-              {chartData.map((entry, index) => (
-                  entry.deposit ? (
-                      <ReferenceLine 
-                        key={`dep-${index}`} 
-                        x={entry.day} 
-                        stroke="#10B981" 
-                        strokeDasharray="3 3" 
+        <div className="h-64 w-full">
+            <ResponsiveContainer width="100%" height="100%">
+                <AreaChart data={chartData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
+                    <defs>
+                        <linearGradient id="colorReal" x1="0" y1="0" x2="0" y2="1">
+                            <stop offset="5%" stopColor="#10B981" stopOpacity={0.3}/>
+                            <stop offset="95%" stopColor="#10B981" stopOpacity={0}/>
+                        </linearGradient>
+                        <linearGradient id="colorIdeal" x1="0" y1="0" x2="0" y2="1">
+                            <stop offset="5%" stopColor="#FFD700" stopOpacity={0.1}/>
+                            <stop offset="95%" stopColor="#FFD700" stopOpacity={0}/>
+                        </linearGradient>
+                    </defs>
+                    <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" vertical={false} />
+                    <XAxis 
+                        dataKey="day" 
+                        axisLine={false} 
+                        tickLine={false} 
+                        tick={{fill: '#64748b', fontSize: 12}}
+                    />
+                    <YAxis 
+                        axisLine={false} 
+                        tickLine={false} 
+                        tick={{fill: '#64748b', fontSize: 12}} 
+                        tickFormatter={(val) => `${val/1000}k`}
+                    />
+                    <Tooltip content={<CustomChartTooltip />} />
+                    
+                    {/* Linha de Meta (Ideal) */}
+                    <Area 
+                        type="monotone" 
+                        dataKey="ideal" 
+                        stroke="#FFD700" 
                         strokeWidth={2}
-                        label={{ position: 'insideTop', value: 'APORTE', fill: '#10B981', fontSize: 10, fontWeight: 'bold' }} 
-                      />
-                  ) : null
-              ))}
+                        strokeDasharray="5 5"
+                        fillOpacity={1} 
+                        fill="url(#colorIdeal)" 
+                    />
+                    
+                    {/* Linha Real */}
+                    <Area 
+                        type="monotone" 
+                        dataKey="real" 
+                        stroke="#10B981" 
+                        strokeWidth={3}
+                        fillOpacity={1} 
+                        fill="url(#colorReal)" 
+                        dot={<CustomDot />}
+                    />
 
-              <Area 
-                type="monotone" 
-                dataKey="ideal" 
-                stroke="#F59E0B" 
-                strokeWidth={2}
-                strokeDasharray="4 4"
-                fillOpacity={1} 
-                fill="url(#colorIdeal)" 
-                name="Meta Ideal" 
-                dot={false}
-              />
-              <Area 
-                type="monotone" 
-                dataKey="real" 
-                stroke="#10B981" 
-                strokeWidth={3}
-                fillOpacity={1} 
-                fill="url(#colorReal)" 
-                name="Banca Real" 
-                dot={<CustomDot />}
-                activeDot={{ r: 6, fill: '#10B981', stroke: '#fff' }}
-              />
-            </AreaChart>
-          </ResponsiveContainer>
+                    {/* Linhas de Referência para Aportes */}
+                    {chartData.map((entry, idx) => (
+                        entry.deposit ? (
+                            <ReferenceLine 
+                                key={`ref-${idx}`} 
+                                x={entry.day} 
+                                stroke="#10B981" 
+                                strokeDasharray="3 3" 
+                                label={{ 
+                                    value: 'APORTE', 
+                                    position: 'top', 
+                                    fill: '#10B981', 
+                                    fontSize: 10, 
+                                    fontWeight: 'bold' 
+                                }} 
+                            />
+                        ) : null
+                    ))}
+
+                </AreaChart>
+            </ResponsiveContainer>
         </div>
       </div>
 
-      {/* --- HISTÓRICO DE SESSÕES --- */}
-      <div className="space-y-4">
-        <h2 className="text-lg font-bold text-white flex items-center gap-2">
-            <Calendar className="w-5 h-5 text-slate-400" /> Histórico de Sessões
-        </h2>
-        
-        {sessions.length === 0 ? (
-            <div className="bg-slate-900 p-8 rounded-xl border border-slate-800 text-center text-slate-500">
-                Nenhuma sessão registrada. Comece a operar para gerar dados.
-            </div>
-        ) : (
-            <div className="space-y-3">
-                {sessions.slice().reverse().map((session) => {
-                    const isExpanded = expandedSessionId === session.id;
-                    return (
-                        <div key={session.id} className="bg-slate-900 border border-slate-800 rounded-xl overflow-hidden shadow-md transition-all">
-                            {/* Header (Clickable) */}
-                            <div 
-                                onClick={() => toggleSessionExpand(session.id)}
-                                className="p-4 flex items-center justify-between cursor-pointer hover:bg-slate-800/50"
-                            >
-                                <div className="flex items-center gap-3">
-                                    <div className={`p-2 rounded-full ${session.profit >= 0 ? 'bg-emerald-900/30 text-emerald-400' : 'bg-red-900/30 text-red-400'}`}>
-                                        {session.profit >= 0 ? <TrendingUp className="w-5 h-5" /> : <TrendingDown className="w-5 h-5" />}
-                                    </div>
-                                    <div>
-                                        <div className="text-sm font-bold text-white">
-                                            {new Date(session.date).toLocaleDateString()} <span className="text-slate-500 font-normal text-xs">• {new Date(session.date).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</span>
-                                        </div>
-                                        <div className="text-xs text-slate-400">
-                                            {session.rounds} rodadas • {Math.floor(session.durationSeconds / 60)} min
-                                        </div>
-                                    </div>
-                                </div>
-                                <div className="flex items-center gap-3">
-                                    <div className={`text-right font-mono font-bold ${session.profit >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
-                                        {session.profit >= 0 ? '+' : ''}R$ {session.profit.toFixed(2)}
-                                    </div>
-                                    {isExpanded ? <ChevronUp className="w-4 h-4 text-slate-500" /> : <ChevronDown className="w-4 h-4 text-slate-500" />}
-                                </div>
-                            </div>
+      {/* --- HISTÓRICO DE SESSÕES (TABLE) --- */}
+      <div className="bg-slate-900 rounded-xl border border-slate-800 shadow-lg overflow-hidden">
+          <div className="p-4 border-b border-slate-800 flex justify-between items-center">
+              <h3 className="font-bold text-white flex items-center gap-2">
+                  <Calendar className="w-5 h-5 text-slate-400" /> Histórico de Operações
+              </h3>
+              <button 
+                  onClick={() => setShowDeleteConfirm(true)} 
+                  className="text-xs text-red-400 hover:text-red-300 flex items-center gap-1 px-3 py-1 rounded border border-red-900/30 hover:bg-red-900/20 transition-colors"
+              >
+                  <Trash2 className="w-3 h-3" /> Limpar Histórico
+              </button>
+          </div>
+          
+          <div className="overflow-x-auto">
+              <table className="w-full text-left border-collapse">
+                  <thead className="bg-slate-950 text-slate-400 text-xs uppercase tracking-wider">
+                      <tr>
+                          <th className="p-4 font-medium">Data</th>
+                          <th className="p-4 font-medium text-center">Status</th>
+                          <th className="p-4 font-medium text-right">Lucro</th>
+                          <th className="p-4 font-medium text-right">Banca Final</th>
+                          <th className="p-4 font-medium text-center">Detalhes</th>
+                      </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-800 text-sm">
+                      {sessions.slice().reverse().map(session => (
+                          <React.Fragment key={session.id}>
+                              <tr 
+                                  onClick={() => toggleSessionExpand(session.id)}
+                                  className={`hover:bg-slate-800/50 transition-colors cursor-pointer ${expandedSessionId === session.id ? 'bg-slate-800/30' : ''}`}
+                              >
+                                  <td className="p-4 text-slate-300">
+                                      <div className="font-bold">{new Date(session.date).toLocaleDateString()}</div>
+                                      <div className="text-xs text-slate-500">{new Date(session.date).toLocaleTimeString()}</div>
+                                  </td>
+                                  <td className="p-4 text-center">
+                                      <span className={`inline-block px-2 py-1 rounded text-[10px] font-bold ${
+                                          session.status === 'WIN' ? 'bg-emerald-900/30 text-emerald-400 border border-emerald-900/50' :
+                                          session.status === 'LOSS' ? 'bg-red-900/30 text-red-400 border border-red-900/50' :
+                                          'bg-slate-700 text-slate-300'
+                                      }`}>
+                                          {session.status}
+                                      </span>
+                                  </td>
+                                  <td className={`p-4 text-right font-mono font-bold ${session.profit >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
+                                      {session.profit >= 0 ? '+' : ''}{session.profit.toFixed(2)}
+                                  </td>
+                                  <td className="p-4 text-right font-mono text-white">
+                                      R$ {session.endBalance.toFixed(2)}
+                                  </td>
+                                  <td className="p-4 text-center">
+                                      {expandedSessionId === session.id ? <ChevronUp className="w-4 h-4 inline text-slate-500" /> : <ChevronDown className="w-4 h-4 inline text-slate-500" />}
+                                  </td>
+                              </tr>
+                              {/* EXPANDED ROW DETAILS */}
+                              {expandedSessionId === session.id && (
+                                  <tr>
+                                      <td colSpan={5} className="bg-slate-950/50 p-0">
+                                          <div className="p-4 border-t border-b border-slate-800 animate-in slide-in-from-top-2">
+                                              <p className="text-xs text-slate-500 uppercase tracking-widest mb-3 font-bold flex items-center gap-2">
+                                                  <Search className="w-3 h-3" /> Raio-X da Sessão
+                                              </p>
+                                              
+                                              {session.roundsDetail && session.roundsDetail.length > 0 ? (
+                                                  <div className="grid grid-cols-1 gap-2 max-h-60 overflow-y-auto pr-2 custom-scrollbar">
+                                                      {session.roundsDetail.map((round, idx) => {
+                                                          // Lógica para detectar All-In (Aposta >= 99% do saldo anterior estimado)
+                                                          // Como não temos o saldo exato pré-round salvo, estimamos.
+                                                          // Mas para o visual simples, vamos destacar apostas muito altas (> 20% da banca final)
+                                                          const isHighStakes = round.betAmount > (session.endBalance * 0.2); 
+                                                          
+                                                          return (
+                                                              <div key={round.id} className={`flex justify-between items-center p-2 rounded border-l-2 ${
+                                                                  isHighStakes ? 'bg-purple-900/10 border-purple-500' : 
+                                                                  round.win ? 'bg-emerald-900/10 border-emerald-500' : 'bg-red-900/10 border-red-500'
+                                                              }`}>
+                                                                  <div className="flex items-center gap-3">
+                                                                      <span className="text-xs text-slate-500 font-mono">#{idx + 1}</span>
+                                                                      <div>
+                                                                          <span className={`text-xs font-bold block ${round.win ? 'text-emerald-400' : 'text-red-400'}`}>
+                                                                              {round.win ? 'GREEN' : 'LOSS'}
+                                                                          </span>
+                                                                          <span className="text-[10px] text-slate-400">
+                                                                              {new Date(round.timestamp).toLocaleTimeString()}
+                                                                          </span>
+                                                                      </div>
+                                                                  </div>
+                                                                  
+                                                                  {isHighStakes && (
+                                                                      <div className="flex items-center gap-1 px-2 py-0.5 bg-purple-500/20 rounded text-[9px] text-purple-300 font-bold border border-purple-500/30">
+                                                                          <Bomb className="w-3 h-3" /> HIGH STAKES
+                                                                      </div>
+                                                                  )}
 
-                            {/* Expanded Details */}
-                            {isExpanded && (
-                                <div className="bg-slate-950/50 border-t border-slate-800 p-4 animate-in slide-in-from-top-2">
-                                    <h4 className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-3">Raio-X da Sessão</h4>
-                                    <div className="space-y-2">
-                                        {session.roundsDetail && session.roundsDetail.length > 0 ? (
-                                            (() => {
-                                                let runningBalance = session.startBalance;
-                                                return session.roundsDetail.map((round) => {
-                                                    // Determine All-in status: bet is within 1% of the current running balance
-                                                    const isAllIn = Math.abs(round.betAmount - runningBalance) < 0.5 || round.betAmount >= runningBalance * 0.99;
-                                                    
-                                                    // Element definition
-                                                    const el = (
-                                                        <div key={round.id} className={`flex justify-between items-center text-sm p-2 rounded border-l-2 ${isAllIn ? 'bg-purple-900/20 border-purple-500 animate-pulse' : 'hover:bg-slate-800/50'}`} style={{ borderColor: isAllIn ? '#A855F7' : round.win ? '#10B981' : '#EF4444' }}>
-                                                            <div className="flex items-center gap-2">
-                                                                <span className="text-slate-400 text-xs font-mono">{new Date(round.timestamp).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit', second:'2-digit'})}</span>
-                                                                <div className="flex items-center gap-1">
-                                                                    {isAllIn && <Bomb className="w-4 h-4 text-purple-500" />}
-                                                                    <span className="text-slate-300 font-bold">{round.multiplier > 0 ? `${round.multiplier.toFixed(2)}x` : 'LOSS'}</span>
-                                                                </div>
-                                                            </div>
-                                                            <div className="flex items-center gap-2">
-                                                                {isAllIn && (
-                                                                    <span className="text-[9px] bg-purple-600 text-white px-1.5 py-0.5 rounded font-bold uppercase tracking-wider">ALL-IN</span>
-                                                                )}
-                                                                <span className="text-[10px] text-slate-500 uppercase bg-slate-800 px-1 rounded hidden md:inline-block">{round.strategy}</span>
-                                                                <span className={`font-mono ${round.win ? 'text-emerald-400' : 'text-red-400'}`}>
-                                                                    {round.win ? '+' : ''}{round.profit.toFixed(2)}
-                                                                </span>
-                                                            </div>
-                                                        </div>
-                                                    );
-                                                    
-                                                    // Update running balance for next iteration
-                                                    runningBalance += round.profit;
-                                                    return el;
-                                                });
-                                            })()
-                                        ) : (
-                                            <p className="text-xs text-slate-500 italic">Detalhes não disponíveis para sessões antigas.</p>
-                                        )}
-                                    </div>
-                                    <div className="mt-4 pt-3 border-t border-slate-800 flex justify-between text-xs text-slate-400">
-                                        <span>Banca Inicial: R$ {session.startBalance?.toFixed(2)}</span>
-                                        <span>Banca Final: R$ {session.endBalance.toFixed(2)}</span>
-                                    </div>
-                                </div>
-                            )}
-                        </div>
-                    );
-                })}
-            </div>
-        )}
-      </div>
-
-      <div className="pt-8 border-t border-slate-800 flex justify-center">
-          <button 
-              onClick={() => setShowDeleteConfirm(true)}
-              className="flex items-center gap-2 text-xs text-red-900 hover:text-red-500 transition-colors uppercase tracking-widest font-bold py-2 px-4 rounded hover:bg-red-900/10"
-          >
-              <Trash2 className="w-4 h-4" /> Limpar todo histórico
-          </button>
+                                                                  <div className="text-right">
+                                                                      <span className="text-xs text-slate-400 mr-3">
+                                                                          Bet: R$ {round.betAmount.toFixed(2)}
+                                                                          {round.multiplier > 0 && ` @ ${round.multiplier.toFixed(2)}x`}
+                                                                      </span>
+                                                                      <span className={`font-mono font-bold text-sm ${round.win ? 'text-emerald-400' : 'text-red-400'}`}>
+                                                                          {round.win ? '+' : ''}{round.profit.toFixed(2)}
+                                                                      </span>
+                                                                  </div>
+                                                              </div>
+                                                          );
+                                                      })}
+                                                  </div>
+                                              ) : (
+                                                  <p className="text-sm text-slate-500 italic py-2">Detalhes jogada a jogada não disponíveis para esta sessão antiga.</p>
+                                              )}
+                                          </div>
+                                      </td>
+                                  </tr>
+                              )}
+                          </React.Fragment>
+                      ))}
+                      {sessions.length === 0 && (
+                          <tr>
+                              <td colSpan={5} className="p-8 text-center text-slate-500">
+                                  Nenhuma operação registrada. Comece a operar para gerar dados.
+                              </td>
+                          </tr>
+                      )}
+                  </tbody>
+              </table>
+          </div>
       </div>
     </div>
   );
