@@ -189,119 +189,173 @@ const App: React.FC = () => {
   }
 
   return (
-    <div className="min-h-screen bg-slate-950 text-white pb-24 font-sans selection:bg-emerald-500/30 selection:text-emerald-200">
+    <div className="min-h-screen bg-slate-950 text-white font-sans relative overflow-hidden selection:bg-emerald-500/30 selection:text-emerald-200">
       <InstallPrompt />
 
-      {/* Top Navigation / Header */}
-      <header className="bg-slate-900/80 backdrop-blur-md border-b border-slate-800 sticky top-0 z-40 px-4 py-3 flex justify-between items-center shadow-lg">
-        <div className="flex items-center gap-3">
-            <TiagoLogo className="w-10 h-10" />
-            <div>
-                <h1 className="font-black text-lg tracking-tight bg-gradient-to-r from-white to-slate-400 bg-clip-text text-transparent">
-                    TIAGO PRO
-                </h1>
-                <p className="text-[10px] text-emerald-500 font-bold uppercase tracking-widest">
-                    Sistema 2026
-                </p>
+      {/* --- AMBIENT LIGHTING EFFECTS --- */}
+      <div className="fixed top-0 left-1/2 -translate-x-1/2 w-[500px] h-[500px] bg-emerald-500/5 rounded-full blur-[100px] pointer-events-none"></div>
+      <div className="fixed bottom-0 right-0 w-[300px] h-[300px] bg-aviator-red/5 rounded-full blur-[80px] pointer-events-none"></div>
+
+      {/* --- HEADER (STICKY GLASS) --- */}
+      <header className="sticky top-0 z-50 bg-slate-950/80 backdrop-blur-xl border-b border-white/5 shadow-sm transition-all duration-300">
+        <div className="max-w-3xl mx-auto px-4 py-3 flex justify-between items-center">
+            <div className="flex items-center gap-3 group">
+                <div className="relative">
+                    <div className="absolute inset-0 bg-emerald-500/20 blur-lg rounded-full group-hover:bg-emerald-500/30 transition-all"></div>
+                    <TiagoLogo className="w-10 h-10 relative z-10 drop-shadow-2xl" />
+                </div>
+                <div>
+                    <h1 className="font-black text-lg tracking-tighter leading-none bg-gradient-to-r from-white to-slate-400 bg-clip-text text-transparent">
+                        TIAGO PRO
+                    </h1>
+                    <p className="text-[9px] text-emerald-500 font-bold uppercase tracking-[0.2em] mt-0.5">
+                        Sistema 2026
+                    </p>
+                </div>
             </div>
-        </div>
-        <div className="flex flex-col items-end">
-            <div className={`text-sm font-mono font-bold px-3 py-1 rounded-full border ${lockStatus === 'WIN' ? 'bg-emerald-900/20 border-emerald-500/50 text-emerald-400 shadow-[0_0_10px_rgba(16,185,129,0.3)] animate-pulse' : lockStatus === 'LOSS' ? 'bg-red-900/20 border-red-500/50 text-red-400 shadow-[0_0_10px_rgba(239,68,68,0.3)] animate-pulse' : 'bg-slate-800 border-slate-700 text-white'}`}>
-                R$ {state.config.currentCapital.toFixed(2)}
+            
+            <div className="flex flex-col items-end">
+                <div className={`
+                    relative overflow-hidden text-sm font-mono font-bold px-4 py-1.5 rounded-full border backdrop-blur-md transition-all duration-300
+                    ${lockStatus === 'WIN' 
+                        ? 'bg-emerald-900/20 border-emerald-500/50 text-emerald-400 shadow-[0_0_15px_rgba(16,185,129,0.2)]' 
+                        : lockStatus === 'LOSS' 
+                        ? 'bg-red-900/20 border-red-500/50 text-red-400 shadow-[0_0_15px_rgba(239,68,68,0.2)]' 
+                        : 'bg-slate-900/50 border-slate-700/50 text-white'}
+                `}>
+                    {/* Pulse indicator */}
+                    {lockStatus && <span className="absolute inset-0 bg-current opacity-10 animate-pulse"></span>}
+                    
+                    R$ {state.config.currentCapital.toFixed(2)}
+                </div>
             </div>
         </div>
       </header>
 
-      {/* Rank Badge Area */}
-      <div className="px-4 pt-4">
-          <RankBadge lifetimeProfit={lifetimeProfit} />
+      {/* --- MAIN CONTENT --- */}
+      <div className="max-w-3xl mx-auto px-4 pb-28 pt-6 space-y-6 relative z-10">
+          
+          {/* RANK BADGE AREA */}
+          <div className="animate-in fade-in slide-in-from-top-4 duration-700">
+              <RankBadge lifetimeProfit={lifetimeProfit} />
+          </div>
+
+          {/* DYNAMIC TAB CONTENT */}
+          <main className="min-h-[50vh] animate-in fade-in zoom-in-95 duration-300">
+            {activeTab === 'session' && (
+              <SessionManager 
+                config={state.config}
+                isActive={state.isSessionActive}
+                rounds={state.currentSessionRounds}
+                startTime={state.sessionStartTime}
+                onStart={startSession}
+                onEnd={endSession}
+                onAddRound={addRound}
+                onUpdateConfig={handleConfigUpdate}
+                lockStatus={lockStatus}
+                todayProfit={dailyProfit}
+              />
+            )}
+
+            {activeTab === 'config' && (
+              <BankrollConfigCard 
+                config={state.config} 
+                onUpdate={handleConfigUpdate} 
+                onExport={handleExportData}
+                onImport={handleImportData}
+              />
+            )}
+
+            {activeTab === 'analytics' && (
+              <Analytics 
+                sessions={state.sessions} 
+                initialBankroll={state.config.initialCapital}
+                dailyGoalPercent={state.config.dailyGoalPercentage}
+                currentBankroll={state.config.currentCapital}
+                onClearHistory={clearHistory}
+              />
+            )}
+
+            {activeTab === 'mindset' && (
+              <MindsetGuide 
+                 lastSession={lastSession} 
+                 sessions={state.sessions}
+                 currentBankroll={state.config.currentCapital}
+              />
+            )}
+          </main>
       </div>
 
-      {/* Main Content Area */}
-      <main className="p-4 max-w-3xl mx-auto animate-in fade-in slide-in-from-bottom-2 duration-500">
-        
-        {activeTab === 'session' && (
-          <SessionManager 
-            config={state.config}
-            isActive={state.isSessionActive}
-            rounds={state.currentSessionRounds}
-            startTime={state.sessionStartTime}
-            onStart={startSession}
-            onEnd={endSession}
-            onAddRound={addRound}
-            onUpdateConfig={handleConfigUpdate}
-            lockStatus={lockStatus}
-            todayProfit={dailyProfit}
-          />
-        )}
-
-        {activeTab === 'config' && (
-          <BankrollConfigCard 
-            config={state.config} 
-            onUpdate={handleConfigUpdate} 
-            onExport={handleExportData}
-            onImport={handleImportData}
-          />
-        )}
-
-        {activeTab === 'analytics' && (
-          <Analytics 
-            sessions={state.sessions} 
-            initialBankroll={state.config.initialCapital}
-            dailyGoalPercent={state.config.dailyGoalPercentage}
-            currentBankroll={state.config.currentCapital}
-            onClearHistory={clearHistory}
-          />
-        )}
-
-        {activeTab === 'mindset' && (
-          <MindsetGuide 
-             lastSession={lastSession} 
-             sessions={state.sessions}
-             currentBankroll={state.config.currentCapital}
-          />
-        )}
-
-      </main>
-
-      {/* Bottom Navigation */}
-      <nav className="fixed bottom-0 left-0 right-0 bg-slate-900/95 backdrop-blur-lg border-t border-slate-800 pb-safe-area shadow-[0_-5px_20px_rgba(0,0,0,0.5)]">
+      {/* --- BOTTOM NAVIGATION --- */}
+      <nav className="fixed bottom-0 left-0 right-0 z-50 bg-slate-950/90 backdrop-blur-xl border-t border-white/5 pb-safe-area shadow-[0_-10px_40px_rgba(0,0,0,0.5)]">
         <div className="flex justify-around items-center p-2 max-w-3xl mx-auto">
-          <button 
-            onClick={() => setActiveTab('session')}
-            className={`flex flex-col items-center p-2 rounded-xl transition-all duration-300 ${activeTab === 'session' ? 'text-emerald-400 bg-emerald-900/20 scale-110' : 'text-slate-500 hover:text-slate-300'}`}
-          >
-            <PlayCircle className={`w-6 h-6 ${activeTab === 'session' ? 'fill-emerald-500/20' : ''}`} />
-            <span className="text-[10px] font-bold mt-1">Operar</span>
-          </button>
+          
+          <NavButton 
+            active={activeTab === 'session'} 
+            onClick={() => setActiveTab('session')} 
+            icon={PlayCircle} 
+            label="Operar" 
+            colorClass="text-emerald-400"
+          />
 
-          <button 
-            onClick={() => setActiveTab('analytics')}
-            className={`flex flex-col items-center p-2 rounded-xl transition-all duration-300 ${activeTab === 'analytics' ? 'text-blue-400 bg-blue-900/20 scale-110' : 'text-slate-500 hover:text-slate-300'}`}
-          >
-            <LineChart className={`w-6 h-6 ${activeTab === 'analytics' ? 'fill-blue-500/20' : ''}`} />
-            <span className="text-[10px] font-bold mt-1">Dados</span>
-          </button>
+          <NavButton 
+            active={activeTab === 'analytics'} 
+            onClick={() => setActiveTab('analytics')} 
+            icon={LineChart} 
+            label="Dados" 
+            colorClass="text-blue-400"
+          />
 
-          <button 
-            onClick={() => setActiveTab('mindset')}
-            className={`flex flex-col items-center p-2 rounded-xl transition-all duration-300 ${activeTab === 'mindset' ? 'text-aviator-gold bg-yellow-900/20 scale-110' : 'text-slate-500 hover:text-slate-300'}`}
-          >
-            <BrainCircuit className={`w-6 h-6 ${activeTab === 'mindset' ? 'fill-yellow-500/20' : ''}`} />
-            <span className="text-[10px] font-bold mt-1">Mental</span>
-          </button>
+          <NavButton 
+            active={activeTab === 'mindset'} 
+            onClick={() => setActiveTab('mindset')} 
+            icon={BrainCircuit} 
+            label="Mental" 
+            colorClass="text-aviator-gold"
+          />
 
-          <button 
-            onClick={() => setActiveTab('config')}
-            className={`flex flex-col items-center p-2 rounded-xl transition-all duration-300 ${activeTab === 'config' ? 'text-purple-400 bg-purple-900/20 scale-110' : 'text-slate-500 hover:text-slate-300'}`}
-          >
-            <LayoutDashboard className={`w-6 h-6 ${activeTab === 'config' ? 'fill-purple-500/20' : ''}`} />
-            <span className="text-[10px] font-bold mt-1">Config</span>
-          </button>
+          <NavButton 
+            active={activeTab === 'config'} 
+            onClick={() => setActiveTab('config')} 
+            icon={LayoutDashboard} 
+            label="Config" 
+            colorClass="text-purple-400"
+          />
+
         </div>
       </nav>
     </div>
   );
 };
+
+// Helper Component for Nav Buttons to keep code clean
+const NavButton = ({ active, onClick, icon: Icon, label, colorClass }: any) => (
+    <button 
+        onClick={onClick}
+        className={`
+            relative flex flex-col items-center justify-center w-16 h-16 rounded-2xl transition-all duration-300
+            ${active ? 'scale-110 -translate-y-2' : 'text-slate-500 hover:text-slate-300 hover:bg-white/5'}
+        `}
+    >
+        {/* Active Glow Background */}
+        {active && (
+            <div className={`absolute inset-0 bg-current opacity-10 blur-md rounded-2xl ${colorClass}`}></div>
+        )}
+        
+        <Icon 
+            className={`w-6 h-6 transition-all duration-300 ${active ? `fill-current ${colorClass}` : 'fill-transparent'}`} 
+            strokeWidth={active ? 2.5 : 2}
+        />
+        
+        <span className={`text-[10px] font-bold mt-1 transition-colors ${active ? colorClass : 'text-slate-500'}`}>
+            {label}
+        </span>
+        
+        {/* Active Dot Indicator */}
+        {active && (
+            <div className={`absolute -bottom-1 w-1 h-1 rounded-full ${colorClass.replace('text-', 'bg-')}`}></div>
+        )}
+    </button>
+);
 
 export default App;

@@ -3,6 +3,7 @@ import { BankrollConfig, Round, StrategyType } from '../types';
 import { STRATEGIES } from '../constants';
 import { SmartRecoveryModal } from './SmartRecoveryModal';
 import { ExternalAnalysis, AnalysisMode } from './ExternalAnalysis';
+import { TiagoLogo } from './TiagoLogo';
 import { Play, Square, PlusCircle, Clock, TrendingUp, TrendingDown, AlertTriangle, Trophy, Target, Volume2, Lock, ShieldCheck, Ban, Timer, Hash, Check, Settings, Zap, Wallet, Shield, Crosshair, ArrowUpRight, Calculator, Map, Eye } from 'lucide-react';
 
 interface Props {
@@ -35,7 +36,8 @@ export const SessionManager: React.FC<Props> = ({
   const recommendedBet = (config.currentCapital * (config.betPercentage / 100)).toFixed(2);
   
   const [betInput, setBetInput] = useState<string>(recommendedBet);
-  const [multInput, setMultInput] = useState<string>(config.defaultTargetMultiplier?.toString() || '1.20');
+  // UPDATED: Fallback to 2.00 instead of 1.20
+  const [multInput, setMultInput] = useState<string>(config.defaultTargetMultiplier?.toString() || '2.00');
   const [selectedStrategy, setSelectedStrategy] = useState<StrategyType>(StrategyType.EARLY_CASHOUT);
   const [timeToUnlock, setTimeToUnlock] = useState<string>('');
   const [showSummary, setShowSummary] = useState(false);
@@ -65,15 +67,25 @@ export const SessionManager: React.FC<Props> = ({
     setBetInput(recommendedBet);
   }, [recommendedBet]);
 
-  // Derived Stats
+  // --- FIXED GOAL LOGIC ---
+  // We need to calculate the daily goal based on the START of session capital, not current.
+  // But `config.currentCapital` updates live.
+  // We can reverse engineer the start capital of this specific session using `todayProfit` if we assume one session per day, 
+  // but better is to use `config.currentCapital` minus `sessionProfit` (local session).
+  // HOWEVER, to fix the "Moving Target Paradox", the goal needs to be calculated based on the capital BEFORE this session started.
+  
   const sessionProfit = rounds.reduce((acc, r) => acc + r.profit, 0);
   
+  // The capital before THIS session began.
   const sessionStartCapital = config.currentCapital - sessionProfit;
+  
+  // Fixed calculations based on Session Start Capital
   const stopLossValue = -(sessionStartCapital * (config.stopLossPercentage / 100));
   
   const dailyGoalPercent = config.dailyGoalPercentage || 5;
   const dailyGoalValue = (sessionStartCapital * (dailyGoalPercent / 100));
   
+  // Remaining Goal = The fixed goal amount minus what we made so far
   const remainingGoal = Math.max(0, dailyGoalValue - sessionProfit);
   
   const hitStopLoss = sessionProfit <= stopLossValue;
@@ -82,14 +94,19 @@ export const SessionManager: React.FC<Props> = ({
   const twoBetsTarget = config.strategyDefaults?.[StrategyType.TWO_BETS] || 2.00;
   const twoBetsCover = config.strategyDefaults?.[StrategyType.TWO_BETS + '_COVER'] || 1.20;
 
+  // --- FLIGHT PLAN CALCULATOR (Quantas vitórias faltam?) ---
   const calculateRoundsNeeded = (targetMult: number, currentBet: number) => {
       if (targetMult <= 1 || currentBet <= 0) return 0;
       
       let profitPerRound = 0;
       
+      // Lógica complexa para Duas Apostas vs Simples
       if (selectedStrategy === StrategyType.TWO_BETS) {
           const cover = config.strategyDefaults?.[StrategyType.TWO_BETS + '_COVER'] || 1.20;
-          const target = config.strategyDefaults?.[StrategyType.TWO_BETS] || 2.00;
+          // Assumindo que o input multInput é o alvo principal
+          const target = parseFloat(multInput) || 2.00; 
+          
+          // Lucro = (Bet*0.6 * Cover) + (Bet*0.4 * Target) - BetTotal
           const gainCover = (currentBet * 0.60) * cover;
           const gainTarget = (currentBet * 0.40) * target;
           profitPerRound = (gainCover + gainTarget) - currentBet;
@@ -103,6 +120,7 @@ export const SessionManager: React.FC<Props> = ({
       return Math.ceil(remainingGoal / profitPerRound);
   };
 
+  // Calcula dinamicamente baseado no input atual do usuário
   const activeRoundsNeeded = calculateRoundsNeeded(parseFloat(multInput) || 1.20, parseFloat(betInput) || 0);
 
   const playAlertSound = () => {
@@ -183,7 +201,7 @@ export const SessionManager: React.FC<Props> = ({
              }
          }
       } else {
-         setMultInput(config.defaultTargetMultiplier?.toString() || '1.20');
+         setMultInput(config.defaultTargetMultiplier?.toString() || '2.00');
       }
   }, [selectedStrategy, config.strategyDefaults, isActive]);
 
@@ -304,6 +322,7 @@ export const SessionManager: React.FC<Props> = ({
   // --- START SCREEN ---
   if (!isActive) {
     const recBetVal = parseFloat(recommendedBet);
+    // Calculate Flight Plan Scenarios
     const planConservative = Math.ceil(dailyGoalValue / (recBetVal * (1.20 - 1)));
     const planModerate = Math.ceil(dailyGoalValue / (recBetVal * (1.50 - 1)));
     const planAggressive = Math.ceil(dailyGoalValue / (recBetVal * (2.00 - 1)));
@@ -325,6 +344,12 @@ export const SessionManager: React.FC<Props> = ({
                  <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></div>
                  <span className="text-[10px] font-bold text-slate-300 uppercase tracking-widest">Sistema Pronto</span>
              </div>
+
+             {/* LOGO TIAGO PRO */}
+             <div className="flex justify-center mb-4">
+                <TiagoLogo className="w-20 h-20 drop-shadow-[0_0_15px_rgba(16,185,129,0.4)]" />
+             </div>
+
              <h1 className="text-2xl font-black text-white tracking-tight">PAINEL DE CONTROLE</h1>
              <p className="text-slate-400 text-sm mt-1">Prepare-se para a operação de hoje.</p>
          </div>
@@ -346,6 +371,7 @@ export const SessionManager: React.FC<Props> = ({
                  </div>
              </div>
 
+             {/* FLIGHT PLAN / EFFORT CALCULATOR */}
              <div className="bg-slate-950 rounded-lg border border-slate-800 p-4">
                  <div className="flex items-center gap-2 text-slate-400 mb-3">
                      <Map className="w-4 h-4" />
@@ -488,6 +514,7 @@ export const SessionManager: React.FC<Props> = ({
         <div className="bg-slate-800 p-3 rounded-lg border border-aviator-gold/20">
           <div className="flex justify-between items-center">
              <span className="text-xs text-aviator-gold font-bold flex items-center gap-1"><Target className="w-3 h-3"/> Meta ({dailyGoalPercent}%)</span>
+             {/* DYNAMIC COUNTER OF WINS NEEDED */}
              {activeRoundsNeeded > 0 && sessionProfit < dailyGoalValue && (
                  <span className="text-[9px] bg-slate-700 text-slate-300 px-1 rounded font-bold">Faltam R$ {remainingGoal.toFixed(2)} (~{activeRoundsNeeded} wins)</span>
              )}
@@ -549,10 +576,10 @@ export const SessionManager: React.FC<Props> = ({
                     <h5 className="text-xs font-bold text-white mb-2 flex items-center gap-2"><Settings className="w-3 h-3"/> Configurar Padrões</h5>
                     <div className="space-y-3">
                         <div>
-                            <label className="text-[10px] text-slate-400">Alvo Saque Precoce</label>
+                            <label className="text-[10px] text-slate-400">Alvo Principal</label>
                             <input 
                                 type="number" step="0.1"
-                                value={config.strategyDefaults?.[StrategyType.EARLY_CASHOUT] || 1.20}
+                                value={config.strategyDefaults?.[StrategyType.EARLY_CASHOUT] || 2.00}
                                 onChange={(e) => handleStrategyDefaultChange(StrategyType.EARLY_CASHOUT, e.target.value)}
                                 className="w-full bg-slate-900 text-xs border border-slate-700 rounded p-1 text-white"
                             />

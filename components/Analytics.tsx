@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { DailySession, Round } from '../types';
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, BarChart, Bar, Cell, ReferenceLine } from 'recharts';
-import { TrendingUp, Calendar, Calculator, DollarSign, ChevronRight, CalendarDays, Clock, BarChart3, Percent, AlertTriangle, ChevronDown, ChevronUp, Search, Trash2, Zap, Target, TrendingDown, Bomb } from 'lucide-react';
+import { TrendingUp, Calendar, Calculator, DollarSign, ChevronRight, CalendarDays, Clock, BarChart3, Percent, AlertTriangle, ChevronDown, ChevronUp, Search, Trash2, Zap, Target, TrendingDown, Bomb, Wallet } from 'lucide-react';
 
 interface Props {
   sessions: DailySession[];
@@ -59,20 +59,36 @@ export const Analytics: React.FC<Props> = ({ sessions, initialBankroll, dailyGoa
   const finalDate = new Date();
   finalDate.setDate(finalDate.getDate() + simDays);
 
-  // --- REAL DATA ---
-  const totalProfit = sessions.reduce((acc, s) => acc + s.profit, 0);
-
-  // --- CHART DATA (DYNAMIC REACTIVE) ---
+  // --- REAL DATA & CHART GENERATION ---
   const chartData = [];
   let currentSimulatedBalance = simCapital;
   const maxChartDays = Math.max(sessions.length, simDays); 
 
+  // Helper to sort sessions by date just in case
+  const sortedSessions = [...sessions].sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+
   for (let i = 0; i <= maxChartDays; i++) {
       let realValue = null;
+      let depositAmount = 0;
+
       if (i === 0) {
         realValue = initialBankroll;
       } else {
-        realValue = sessions[i-1] ? sessions[i-1].endBalance : null;
+        const currentSession = sortedSessions[i-1];
+        if (currentSession) {
+            realValue = currentSession.endBalance;
+
+            // DETECT DEPOSIT (Aporte de Aceleração)
+            // Logic: If (Current Session Start Balance) > (Previous Session End Balance), the difference is a deposit/adjustment.
+            const prevSession = sortedSessions[i-2];
+            const prevBalance = prevSession ? prevSession.endBalance : initialBankroll;
+            
+            // We use a small threshold (e.g., 1.00) to avoid detecting tiny floating point rounding errors as deposits
+            const gap = currentSession.startBalance - prevBalance;
+            if (gap > 1) { 
+                depositAmount = gap;
+            }
+        }
       }
 
       let idealValue = null;
@@ -83,7 +99,8 @@ export const Analytics: React.FC<Props> = ({ sessions, initialBankroll, dailyGoa
       chartData.push({
           day: i,
           ideal: idealValue,
-          real: realValue
+          real: realValue,
+          deposit: depositAmount > 0 ? depositAmount : null // Store for Tooltip/Visualization
       });
 
       if (i < simDays) {
@@ -91,7 +108,7 @@ export const Analytics: React.FC<Props> = ({ sessions, initialBankroll, dailyGoa
       }
   }
 
-  // --- TEMPORAL PATTERN ANALYSIS (NEW) ---
+  // --- TEMPORAL PATTERN ANALYSIS (REFACTORED) ---
   const processTimeData = () => {
     // Initialize 24h buckets
     const hours = Array.from({ length: 24 }, (_, i) => ({
@@ -143,21 +160,27 @@ export const Analytics: React.FC<Props> = ({ sessions, initialBankroll, dailyGoa
         rate: d.total > 0 ? (d.wins / d.total) * 100 : 0
     }));
 
-    // Find best metrics (Profit)
+    // Sort for Best (Highest Profit)
     const bestHourProfit = [...hoursWithStats].sort((a, b) => b.profit - a.profit)[0];
     const bestDayProfit = [...daysWithStats].sort((a, b) => b.profit - a.profit)[0];
 
-    // Find best metrics (Win Rate) - min 2 rounds to be significant
+    // Sort for Best (Highest Win Rate) - min 2 rounds to be significant
     const bestHourRate = [...hoursWithStats].filter(h => h.total >= 2).sort((a, b) => b.rate - a.rate)[0] || hoursWithStats[0];
     const bestDayRate = [...daysWithStats].filter(d => d.total >= 2).sort((a, b) => b.rate - a.rate)[0] || daysWithStats[0];
+
+    // Sort for Worst (Lowest Profit / Highest Loss)
+    const worstHourProfit = [...hoursWithStats].sort((a, b) => a.profit - b.profit)[0];
+    const worstHourRate = [...hoursWithStats].filter(h => h.total >= 2).sort((a, b) => a.rate - b.rate)[0];
 
     return { 
         hours: hoursWithStats, 
         daysOfWeek: daysWithStats, 
         bestHourProfit, 
-        bestDayProfit,
+        bestDayProfit, 
         bestHourRate,
-        bestDayRate,
+        bestDayRate, 
+        worstHourProfit,
+        worstHourRate,
         totalRounds: allRounds.length 
     };
   };
@@ -171,6 +194,86 @@ export const Analytics: React.FC<Props> = ({ sessions, initialBankroll, dailyGoa
   const handleConfirmDelete = () => {
       onClearHistory();
       setShowDeleteConfirm(false);
+  };
+
+  // CUSTOM TOOLTIP COMPONENTS
+  const CustomChartTooltip = ({ active, payload, label }: any) => {
+    if (active && payload && payload.length) {
+      const data = payload[0].payload;
+      return (
+        <div className="bg-slate-950 border border-slate-700 p-3 rounded-lg shadow-2xl min-w-[150px]">
+          <p className="text-slate-400 text-xs mb-2">Dia {label}</p>
+          
+          {/* Exibe Aporte se houver */}
+          {data.deposit && (
+              <div className="mb-2 pb-2 border-b border-slate-800">
+                  <p className="text-[10px] text-slate-500 uppercase font-bold flex items-center gap-1">
+                      <Wallet className="w-3 h-3 text-emerald-400" /> Aporte Realizado
+                  </p>
+                  <p className="text-emerald-400 font-black text-sm">+ R$ {data.deposit.toFixed(2)}</p>
+              </div>
+          )}
+
+          {data.real !== null && (
+            <div className="mb-1">
+                <span className="text-emerald-500 font-bold text-sm">Real: </span>
+                <span className="text-white font-mono text-sm">R$ {Number(data.real).toFixed(2)}</span>
+            </div>
+          )}
+          {data.ideal !== null && (
+             <div>
+                <span className="text-aviator-gold font-bold text-sm">Meta: </span>
+                <span className="text-white font-mono text-sm">R$ {Number(data.ideal).toFixed(2)}</span>
+             </div>
+          )}
+        </div>
+      );
+    }
+    return null;
+  };
+
+  const CustomBarTooltip = ({ active, payload, label }: any) => {
+      if (active && payload && payload.length) {
+          const data = payload[0].payload;
+          return (
+              <div className="bg-slate-950 border border-slate-700 p-4 rounded-lg shadow-2xl min-w-[180px]">
+                  <p className="text-white font-black text-lg mb-3 border-b border-slate-800 pb-2">{data.name}</p>
+                  <div className="space-y-2 text-xs">
+                      <div className="flex justify-between items-center gap-4 text-slate-400">
+                          <span className="font-bold">Volume:</span> 
+                          <span className="text-white font-mono">{data.total} entradas</span>
+                      </div>
+                      <div className="flex justify-between items-center gap-4 text-slate-400">
+                          <span className="font-bold">Assertividade:</span> 
+                          <span className={`font-mono font-bold ${data.rate >= 50 ? "text-emerald-400" : "text-red-400"}`}>
+                              {data.rate.toFixed(0)}%
+                          </span>
+                      </div>
+                      <div className="flex justify-between items-center gap-4 text-slate-400">
+                          <span className="font-bold">Resultado:</span> 
+                          <span className={`font-mono font-bold text-sm ${data.profit >= 0 ? "text-emerald-400" : "text-red-500"}`}>
+                              {data.profit >= 0 ? '+' : ''}R$ {data.profit.toFixed(2)}
+                          </span>
+                      </div>
+                  </div>
+              </div>
+          );
+      }
+      return null;
+  };
+
+  // CUSTOM DOT FOR APORTE
+  const CustomDot = (props: any) => {
+      const { cx, cy, payload } = props;
+      if (payload && payload.deposit) {
+          return (
+              <g transform={`translate(${cx},${cy})`}>
+                  <circle r={6} fill="#10B981" stroke="#fff" strokeWidth={2} />
+                  <circle r={12} fill="#10B981" opacity={0.3} className="animate-pulse" />
+              </g>
+          );
+      }
+      return null; // Hide dots for regular points to keep chart clean
   };
 
   return (
@@ -333,111 +436,175 @@ export const Analytics: React.FC<Props> = ({ sessions, initialBankroll, dailyGoa
         </div>
       </div>
 
-      {/* --- RADAR DE PERFORMANCE TEMPORAL (NEW) --- */}
+      {/* --- RADAR DE PERFORMANCE TEMPORAL (REDEFINED) --- */}
       {timeStats.totalRounds > 0 && (
-          <div className="bg-slate-900 rounded-xl border border-slate-800 p-4 space-y-6 shadow-lg">
-             <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-                 <div className="flex items-center gap-2">
-                    <BarChart3 className="w-5 h-5 text-emerald-400" />
+          <div className="bg-slate-900 rounded-xl border border-slate-800 p-6 space-y-8 shadow-lg relative overflow-hidden">
+             {/* Header */}
+             <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
+                 <div className="flex items-center gap-3">
+                    <div className="bg-emerald-500/20 p-2 rounded-lg">
+                        <BarChart3 className="w-6 h-6 text-emerald-400" />
+                    </div>
                     <div>
-                        <h2 className="text-lg font-bold text-white">Radar de Padrões</h2>
-                        <p className="text-xs text-slate-400">Descubra quando você ganha mais.</p>
+                        <h2 className="text-xl font-black text-white tracking-tight">RADAR DE PADRÕES</h2>
+                        <p className="text-xs text-slate-400 font-medium">Inteligência Temporal: Onde o dinheiro está.</p>
                     </div>
                  </div>
-                 <div className="flex bg-slate-800 p-1 rounded-lg">
+                 
+                 {/* Toggle */}
+                 <div className="bg-slate-950 p-1 rounded-lg border border-slate-800 flex self-start">
                      <button 
                         onClick={() => setTimeMetric('profit')}
-                        className={`px-3 py-1 text-xs rounded font-bold transition-all ${timeMetric === 'profit' ? 'bg-aviator-gold text-black shadow' : 'text-slate-400 hover:text-white'}`}
+                        className={`px-4 py-2 text-xs font-bold rounded transition-all ${timeMetric === 'profit' ? 'bg-emerald-500 text-black shadow-lg shadow-emerald-900/20' : 'text-slate-500 hover:text-slate-300'}`}
                      >
-                        Lucro (R$)
+                        LUCRO (R$)
                      </button>
                      <button 
                         onClick={() => setTimeMetric('rate')}
-                        className={`px-3 py-1 text-xs rounded font-bold transition-all ${timeMetric === 'rate' ? 'bg-emerald-500 text-black shadow' : 'text-slate-400 hover:text-white'}`}
+                        className={`px-4 py-2 text-xs font-bold rounded transition-all ${timeMetric === 'rate' ? 'bg-blue-500 text-white shadow-lg shadow-blue-900/20' : 'text-slate-500 hover:text-slate-300'}`}
                      >
-                        Assertividade (%)
+                        ASSERTIVIDADE (%)
                      </button>
                  </div>
              </div>
 
+             {/* Highlights Cards */}
              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                  {/* Best Hour Card */}
-                 <div className="bg-slate-800/30 p-4 rounded-lg border border-slate-700 flex items-center justify-between">
-                     <div>
-                         <span className="text-xs text-slate-400 uppercase tracking-wider flex items-center gap-1">
-                             <Clock className="w-3 h-3" /> Horário de Ouro
-                         </span>
-                         <span className="text-2xl font-bold text-white">
-                             {timeMetric === 'profit' ? timeStats.bestHourProfit?.name : timeStats.bestHourRate?.name}
-                         </span>
-                         <p className="text-[10px] text-emerald-400">
-                             {timeMetric === 'profit' 
-                                ? `+ R$ ${timeStats.bestHourProfit?.profit.toFixed(2)} de lucro total`
-                                : `${timeStats.bestHourRate?.rate.toFixed(0)}% de taxa de acerto`
-                             }
-                         </p>
+                 <div className="bg-gradient-to-br from-emerald-900/20 to-slate-900 border border-emerald-500/30 p-5 rounded-xl relative group overflow-hidden">
+                     <div className="absolute top-0 right-0 p-4 opacity-10">
+                         <Zap className="w-24 h-24 text-emerald-400" />
                      </div>
-                     <Zap className="w-8 h-8 text-aviator-gold opacity-20" />
+                     <div className="relative z-10">
+                         <div className="flex justify-between items-start mb-2">
+                             <div>
+                                 <div className="flex items-center gap-2 mb-1">
+                                    <Clock className="w-4 h-4 text-emerald-400" />
+                                    <span className="text-xs font-bold text-emerald-400 uppercase tracking-widest">Janela de Oportunidade</span>
+                                 </div>
+                                 <span className="text-4xl font-black text-white block mt-2">
+                                     {timeMetric === 'profit' ? timeStats.bestHourProfit?.name : timeStats.bestHourRate?.name}
+                                 </span>
+                             </div>
+                         </div>
+                         <div className="mt-4 pt-4 border-t border-emerald-500/20 flex justify-between items-end">
+                             <div>
+                                <p className="text-[10px] text-slate-400 uppercase">Resultado no período</p>
+                                <p className="text-lg font-bold text-white">
+                                    {timeMetric === 'profit' 
+                                        ? `+ R$ ${timeStats.bestHourProfit?.profit.toFixed(2)}`
+                                        : `${timeStats.bestHourRate?.rate.toFixed(0)}% Win Rate`
+                                     }
+                                </p>
+                             </div>
+                             <div className="text-right">
+                                 <p className="text-[10px] text-slate-400 uppercase">Volume</p>
+                                 <p className="text-sm font-bold text-white">{timeMetric === 'profit' ? timeStats.bestHourProfit?.total : timeStats.bestHourRate?.total} Entradas</p>
+                             </div>
+                         </div>
+                     </div>
                  </div>
 
-                 {/* Best Day Card */}
-                 <div className="bg-slate-800/30 p-4 rounded-lg border border-slate-700 flex items-center justify-between">
-                     <div>
-                         <span className="text-xs text-slate-400 uppercase tracking-wider flex items-center gap-1">
-                             <Calendar className="w-3 h-3" /> Dia da Vitória
-                         </span>
-                         <span className="text-2xl font-bold text-white">
-                             {timeMetric === 'profit' ? timeStats.bestDayProfit?.name : timeStats.bestDayRate?.name}
-                         </span>
-                         <p className="text-[10px] text-emerald-400">
-                             {timeMetric === 'profit'
-                                ? `+ R$ ${timeStats.bestDayProfit?.profit.toFixed(2)} de lucro total`
-                                : `${timeStats.bestDayRate?.rate.toFixed(0)}% de taxa de acerto`
-                             }
-                         </p>
+                 {/* Worst Hour Card (Danger Zone) */}
+                 <div className="bg-gradient-to-br from-red-900/20 to-slate-900 border border-red-500/30 p-5 rounded-xl relative group overflow-hidden">
+                     <div className="absolute top-0 right-0 p-4 opacity-10">
+                         <AlertTriangle className="w-24 h-24 text-red-500" />
                      </div>
-                     <Target className="w-8 h-8 text-emerald-500 opacity-20" />
+                     <div className="relative z-10">
+                        <div className="flex justify-between items-start mb-2">
+                             <div>
+                                 <div className="flex items-center gap-2 mb-1">
+                                    <TrendingDown className="w-4 h-4 text-red-500" />
+                                    <span className="text-xs font-bold text-red-500 uppercase tracking-widest">Zona de Perigo (Evitar)</span>
+                                 </div>
+                                 <span className="text-4xl font-black text-white block mt-2">
+                                     {timeMetric === 'profit' 
+                                        ? (timeStats.worstHourProfit?.profit < 0 ? timeStats.worstHourProfit?.name : '--')
+                                        : (timeStats.worstHourRate ? timeStats.worstHourRate?.name : '--')
+                                     }
+                                 </span>
+                             </div>
+                         </div>
+                         <div className="mt-4 pt-4 border-t border-red-500/20 flex justify-between items-end">
+                             <div>
+                                <p className="text-[10px] text-slate-400 uppercase">Prejuízo no período</p>
+                                <p className="text-lg font-bold text-red-400">
+                                    {timeMetric === 'profit' 
+                                        ? (timeStats.worstHourProfit?.profit < 0 ? `R$ ${timeStats.worstHourProfit?.profit.toFixed(2)}` : 'Sem prejuízos')
+                                        : (timeStats.worstHourRate ? `${timeStats.worstHourRate?.rate.toFixed(0)}% Win Rate` : 'N/A')
+                                     }
+                                </p>
+                             </div>
+                             <div className="text-right">
+                                 <p className="text-[10px] text-slate-400 uppercase">Volume</p>
+                                 <p className="text-sm font-bold text-white">
+                                    {timeMetric === 'profit' ? timeStats.worstHourProfit?.total : timeStats.worstHourRate?.total} Entradas
+                                 </p>
+                             </div>
+                         </div>
+                     </div>
                  </div>
              </div>
 
              {/* Hourly Chart */}
-             <div className="h-48 w-full">
-                 <p className="text-xs text-slate-500 mb-2 text-center">Desempenho por Hora (00h - 23h)</p>
-                 <ResponsiveContainer width="100%" height="100%">
-                     <BarChart data={timeStats.hours}>
-                        <XAxis dataKey="name" hide />
-                        <Tooltip 
-                            contentStyle={{ backgroundColor: '#0f172a', borderColor: '#334155', fontSize: '12px' }}
-                            labelStyle={{ color: '#94a3b8' }}
-                            formatter={(value: number) => timeMetric === 'profit' ? `R$ ${value.toFixed(2)}` : `${value.toFixed(0)}%`}
-                        />
-                        <Bar dataKey={timeMetric} radius={[2, 2, 0, 0]}>
-                            {timeStats.hours.map((entry, index) => (
-                                <Cell 
-                                    key={`cell-${index}`} 
-                                    fill={
-                                        timeMetric === 'rate' 
-                                            ? `rgba(16, 185, 129, ${Math.max(0.2, entry.rate / 100)})`
-                                            : entry.profit > 0 ? '#10B981' : '#EF4444'
-                                    } 
-                                />
-                            ))}
-                        </Bar>
-                     </BarChart>
-                 </ResponsiveContainer>
+             <div className="bg-slate-950 p-4 rounded-lg border border-slate-800">
+                 <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-6 gap-4">
+                     <h3 className="text-sm font-bold text-slate-200 flex items-center gap-2">
+                         <Clock className="w-4 h-4 text-slate-500" /> Performance Hora a Hora (24h)
+                     </h3>
+                     <div className="flex items-center gap-3 text-[10px] bg-slate-900 p-2 rounded border border-slate-800">
+                         <div className="flex items-center gap-1.5"><div className="w-2 h-2 rounded-full bg-emerald-500"></div>Lucro / Alta Taxa</div>
+                         <div className="flex items-center gap-1.5"><div className="w-2 h-2 rounded-full bg-red-500"></div>Prejuízo / Baixa Taxa</div>
+                     </div>
+                 </div>
+
+                 <div className="h-64 w-full">
+                     <ResponsiveContainer width="100%" height="100%">
+                         <BarChart data={timeStats.hours} margin={{top: 10, right: 0, left: -20, bottom: 0}}>
+                             <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" vertical={false} />
+                             <XAxis 
+                                 dataKey="name" 
+                                 axisLine={false} 
+                                 tickLine={false} 
+                                 tick={{fill: '#94a3b8', fontSize: 10, fontWeight: 500}} 
+                                 interval={2}
+                             />
+                             <YAxis 
+                                 axisLine={false} 
+                                 tickLine={false} 
+                                 tick={{fill: '#94a3b8', fontSize: 10}}
+                             />
+                             <Tooltip content={<CustomBarTooltip />} cursor={{fill: 'rgba(255,255,255,0.05)'}} />
+                             <Bar dataKey={timeMetric} radius={[4, 4, 0, 0]} maxBarSize={40}>
+                                 {timeStats.hours.map((entry, index) => (
+                                     <Cell 
+                                         key={`cell-${index}`} 
+                                         fill={
+                                             timeMetric === 'rate' 
+                                                 ? (entry.rate >= 50 ? '#10B981' : '#EF4444')
+                                                 : (entry.profit >= 0 ? '#10B981' : '#EF4444')
+                                         }
+                                         fillOpacity={timeMetric === 'rate' ? (entry.total > 0 ? 1 : 0.1) : 1}
+                                     />
+                                 ))}
+                             </Bar>
+                             <ReferenceLine y={0} stroke="#334155" />
+                         </BarChart>
+                     </ResponsiveContainer>
+                 </div>
              </div>
           </div>
       )}
 
 
-      {/* --- GRÁFICO DE EVOLUÇÃO --- */}
+      {/* --- GRÁFICO DE EVOLUÇÃO (UPDATED WITH DEPOSIT LINES AND DOTS) --- */}
       <div className="bg-slate-900 p-4 rounded-xl border border-slate-800 shadow-lg">
         <h2 className="text-lg font-bold text-white mb-4 flex items-center gap-2">
           <TrendingUp className="w-5 h-5 text-emerald-500" /> Evolução: Real vs Projetado
         </h2>
         <div className="h-72 w-full bg-slate-950/50 rounded-lg p-2 border border-slate-800/50 shadow-inner">
           <ResponsiveContainer width="100%" height="100%">
-            <AreaChart data={chartData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
+            <AreaChart data={chartData} margin={{ top: 20, right: 10, left: -20, bottom: 0 }}>
               <defs>
                 <linearGradient id="colorReal" x1="0" y1="0" x2="0" y2="1">
                   <stop offset="5%" stopColor="#10B981" stopOpacity={0.4}/>
@@ -464,12 +631,22 @@ export const Analytics: React.FC<Props> = ({ sessions, initialBankroll, dailyGoa
                 axisLine={false}
                 tickFormatter={(val) => `${val}`}
               />
-              <Tooltip 
-                contentStyle={{ backgroundColor: '#020617', borderColor: '#334155', borderRadius: '8px', boxShadow: '0 10px 15px -3px rgba(0, 0, 0, 0.5)' }}
-                itemStyle={{ fontSize: '12px', fontWeight: 'bold' }}
-                formatter={(value: any) => [`R$ ${Number(value).toFixed(2)}`, '']}
-                labelStyle={{ color: '#94a3b8', marginBottom: '0.5rem' }}
-              />
+              <Tooltip content={<CustomChartTooltip />} />
+              
+              {/* Renderiza linhas verticais onde houver Aporte */}
+              {chartData.map((entry, index) => (
+                  entry.deposit ? (
+                      <ReferenceLine 
+                        key={`dep-${index}`} 
+                        x={entry.day} 
+                        stroke="#10B981" 
+                        strokeDasharray="3 3" 
+                        strokeWidth={2}
+                        label={{ position: 'insideTop', value: 'APORTE', fill: '#10B981', fontSize: 10, fontWeight: 'bold' }} 
+                      />
+                  ) : null
+              ))}
+
               <Area 
                 type="monotone" 
                 dataKey="ideal" 
@@ -479,6 +656,7 @@ export const Analytics: React.FC<Props> = ({ sessions, initialBankroll, dailyGoa
                 fillOpacity={1} 
                 fill="url(#colorIdeal)" 
                 name="Meta Ideal" 
+                dot={false}
               />
               <Area 
                 type="monotone" 
@@ -488,6 +666,7 @@ export const Analytics: React.FC<Props> = ({ sessions, initialBankroll, dailyGoa
                 fillOpacity={1} 
                 fill="url(#colorReal)" 
                 name="Banca Real" 
+                dot={<CustomDot />}
                 activeDot={{ r: 6, fill: '#10B981', stroke: '#fff' }}
               />
             </AreaChart>

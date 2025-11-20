@@ -11,13 +11,13 @@ export const OnboardingWizard: React.FC<Props> = ({ onComplete }) => {
   const [config, setConfig] = useState<BankrollConfig>({
     initialCapital: 100,
     currentCapital: 100,
-    betPercentage: 1.5,
+    betPercentage: 3.5, // UPDATED: Padrão 3.5%
     stopLossPercentage: 15,
     stopWinPercentage: 5,
     dailyGoalPercentage: 5,
-    defaultTargetMultiplier: 1.20,
+    defaultTargetMultiplier: 2.00, // UPDATED: Padrão 2.00x
     strategyDefaults: {
-        'SAQUE_PRECOCE': 1.20,
+        'SAQUE_PRECOCE': 2.00, // UPDATED: Default 2.00x
         'DUAS_APOSTAS': 2.00,
         'DUAS_APOSTAS_COVER': 1.20,
         'MANUAL': 0
@@ -115,12 +115,12 @@ export const OnboardingWizard: React.FC<Props> = ({ onComplete }) => {
                     <span className="text-xs font-mono text-white font-bold">{config.betPercentage}% (R$ {calculatedBet})</span>
                  </div>
                  <input
-                    type="range" min="0.5" max="5" step="0.1"
+                    type="range" min="0.5" max="10" step="0.1"
                     value={config.betPercentage}
                     onChange={(e) => setConfig({...config, betPercentage: Number(e.target.value)})}
                     className="w-full h-2 bg-slate-700 rounded-lg appearance-none cursor-pointer accent-slate-400"
                  />
-                 <p className="text-[10px] text-slate-500 mt-2 text-right">Recomendado: 1% a 2% da banca.</p>
+                 <p className="text-[10px] text-slate-500 mt-2 text-right">Padrão Configurado: 3.5% da banca.</p>
               </div>
             </div>
           )}

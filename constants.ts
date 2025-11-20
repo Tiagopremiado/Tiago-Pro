@@ -4,13 +4,13 @@ import { Medal, Crown, Zap, Shield, Target, Gem } from 'lucide-react';
 export const INITIAL_CONFIG = {
   initialCapital: 100, // Valor padrão inicial
   currentCapital: 100,
-  betPercentage: 1.5, // Média entre 1 e 2%
+  betPercentage: 3.5, // UPDATED: Padrão solicitado de 3.5%
   stopLossPercentage: 15, // Média entre 10 e 20%
   stopWinPercentage: 7.5, // Média entre 5 e 10%
   dailyGoalPercentage: 5.0, // Meta conservadora padrão
-  defaultTargetMultiplier: 1.20, // Alvo conservador padrão
+  defaultTargetMultiplier: 2.00, // UPDATED: Padrão solicitado de 2.00x
   strategyDefaults: {
-    [StrategyType.EARLY_CASHOUT]: 1.20,
+    [StrategyType.EARLY_CASHOUT]: 2.00, // UPDATED: Agora inicia em 2.00x
     [StrategyType.TWO_BETS]: 2.00,
     [StrategyType.TWO_BETS + '_COVER']: 1.20, // Alvo da aposta de cobertura
     [StrategyType.MANUAL]: 0
@@ -29,10 +29,10 @@ export const INITIAL_STATE = {
 export const STRATEGIES = [
   {
     id: StrategyType.EARLY_CASHOUT,
-    name: 'Saque Precoce (1.10x - 1.30x)',
-    description: 'Alta taxa de acerto. Lucros pequenos e seguros.',
-    minMult: 1.10,
-    maxMult: 1.30
+    name: 'Estratégia Principal (2.00x)', // Renamed to reflect new default
+    description: 'Foco no alvo principal da gestão.',
+    minMult: 1.50,
+    maxMult: 2.50
   },
   {
     id: StrategyType.TWO_BETS,
