@@ -1,5 +1,5 @@
-import React, { useMemo } from 'react';
-import { Brain, MessageSquareWarning, ShieldAlert, ThumbsUp, Skull, Lock, Microscope, Activity, TrendingUp, CalendarCheck, AlertTriangle, Flame, Snowflake } from 'lucide-react';
+import React, { useMemo, useState, useEffect, useRef } from 'react';
+import { Brain, MessageSquareWarning, ShieldAlert, ThumbsUp, Skull, Lock, Microscope, Activity, TrendingUp, CalendarCheck, AlertTriangle, Flame, Snowflake, Wind, Zap, MousePointer2, RefreshCw, Timer, History, Trash2 } from 'lucide-react';
 import { DailySession } from '../types';
 import { WIN_MESSAGES, LOSS_MESSAGES, NEUTRAL_MESSAGES } from '../mindset_content';
 
@@ -8,6 +8,194 @@ interface Props {
     sessions?: DailySession[];
     currentBankroll?: number;
 }
+
+// --- MINI-GAME: REACTION TRAINER ---
+const ReactionGame = () => {
+    const [gameState, setGameState] = useState<'idle' | 'waiting' | 'ready' | 'clicked'>('idle');
+    const [startTime, setStartTime] = useState(0);
+    const [reactionTime, setReactionTime] = useState<number | null>(null);
+    const [bestTime, setBestTime] = useState<number | null>(null);
+    const [history, setHistory] = useState<number[]>([]);
+    const timeoutRef = useRef<any>(null);
+
+    // Load history from localStorage on mount
+    useEffect(() => {
+        const savedHistory = localStorage.getItem('tiago_reflex_history');
+        const savedBest = localStorage.getItem('tiago_reflex_best');
+        if (savedHistory) setHistory(JSON.parse(savedHistory));
+        if (savedBest) setBestTime(parseInt(savedBest));
+    }, []);
+
+    // Cleanup on unmount
+    useEffect(() => {
+        return () => {
+            if (timeoutRef.current) clearTimeout(timeoutRef.current);
+        };
+    }, []);
+
+    const startGame = () => {
+        setGameState('waiting');
+        setReactionTime(null);
+        const randomDelay = Math.floor(Math.random() * 2000) + 1000; // 1-3 seconds
+        
+        if (timeoutRef.current) clearTimeout(timeoutRef.current);
+
+        timeoutRef.current = setTimeout(() => {
+            setGameState('ready');
+            setStartTime(Date.now());
+        }, randomDelay);
+    };
+
+    const handleClick = () => {
+        if (gameState === 'idle' || gameState === 'clicked') {
+            startGame();
+        } else if (gameState === 'waiting') {
+            clearTimeout(timeoutRef.current);
+            setGameState('idle');
+            alert("Muito cedo! Espere ficar verde.");
+        } else if (gameState === 'ready') {
+            const time = Date.now() - startTime;
+            setReactionTime(time);
+            setGameState('clicked');
+            
+            // Update Best Time
+            if (!bestTime || time < bestTime) {
+                setBestTime(time);
+                localStorage.setItem('tiago_reflex_best', time.toString());
+            }
+
+            // Update History
+            const newHistory = [time, ...history].slice(0, 10); // Keep last 10
+            setHistory(newHistory);
+            localStorage.setItem('tiago_reflex_history', JSON.stringify(newHistory));
+        }
+    };
+
+    const clearHistory = (e: React.MouseEvent) => {
+        e.stopPropagation();
+        setHistory([]);
+        setBestTime(null);
+        localStorage.removeItem('tiago_reflex_history');
+        localStorage.removeItem('tiago_reflex_best');
+    };
+
+    const getGrade = (ms: number) => {
+        if (ms < 200) return { label: 'GOD', color: 'text-purple-400' };
+        if (ms < 250) return { label: 'PRO', color: 'text-emerald-400' };
+        if (ms < 350) return { label: 'OK', color: 'text-yellow-400' };
+        return { label: 'LENTO', color: 'text-red-400' };
+    };
+
+    return (
+        <div className="bg-slate-950 rounded-xl p-4 border border-slate-800 flex flex-col items-center select-none h-full">
+            <div className="flex items-center justify-between w-full mb-4">
+                <div className="flex items-center gap-2 text-blue-400 font-bold uppercase text-xs tracking-wider">
+                    <Zap className="w-4 h-4" /> Treinador de Reflexo
+                </div>
+                {history.length > 0 && (
+                    <button onClick={clearHistory} className="text-[10px] text-slate-600 hover:text-red-400 flex items-center gap-1">
+                        <Trash2 className="w-3 h-3" /> Limpar
+                    </button>
+                )}
+            </div>
+            
+            <div 
+                onMouseDown={handleClick}
+                className={`w-full h-32 rounded-xl flex flex-col items-center justify-center cursor-pointer transition-all shadow-lg active:scale-[0.98] mb-4 ${
+                    gameState === 'idle' || gameState === 'clicked' ? 'bg-slate-800 hover:bg-slate-700 border-2 border-slate-600' :
+                    gameState === 'waiting' ? 'bg-red-900 border-2 border-red-600' :
+                    'bg-emerald-500 border-4 border-white shadow-[0_0_30px_rgba(16,185,129,0.6)]'
+                }`}
+            >
+                {gameState === 'idle' && <span className="text-slate-400 font-bold text-sm">Toque para Iniciar</span>}
+                {gameState === 'waiting' && <span className="text-red-200 font-bold text-sm animate-pulse">Aguarde o Verde...</span>}
+                {gameState === 'ready' && <span className="text-black font-black text-2xl uppercase">CLIQUE AGORA!</span>}
+                {gameState === 'clicked' && (
+                    <div>
+                        <span className="text-white font-bold text-3xl block">{reactionTime}ms</span>
+                        <span className="text-slate-400 text-xs">Clique para tentar de novo</span>
+                    </div>
+                )}
+            </div>
+
+            <div className="w-full flex-1 flex flex-col min-h-0">
+                <div className="flex justify-between w-full px-2 text-xs text-slate-500 mb-2 border-b border-slate-800 pb-2">
+                    <span>Recorde: {bestTime ? <span className="text-emerald-400 font-bold">{bestTime}ms</span> : '--'}</span>
+                    <span>Meta: &lt; 250ms</span>
+                </div>
+
+                <div className="flex-1 overflow-y-auto custom-scrollbar space-y-1 pr-1 max-h-[150px]">
+                    {history.length === 0 && <p className="text-center text-[10px] text-slate-600 py-4">Sem histórico</p>}
+                    {history.map((time, idx) => {
+                        const grade = getGrade(time);
+                        return (
+                            <div key={idx} className="flex justify-between items-center bg-slate-900/50 p-2 rounded border border-slate-800/50 text-xs">
+                                <span className="text-slate-400 font-mono">#{idx + 1}</span>
+                                <span className="text-white font-bold">{time}ms</span>
+                                <span className={`text-[10px] font-black ${grade.color}`}>{grade.label}</span>
+                            </div>
+                        );
+                    })}
+                </div>
+            </div>
+        </div>
+    );
+};
+
+// --- COMPONENT: TACTICAL BREATHING ---
+const BreathingExercise = () => {
+    const [phase, setPhase] = useState<'Inhale' | 'Hold' | 'Exhale' | 'HoldEmpty'>('Inhale');
+    const [text, setText] = useState('INSPIRE (4s)');
+
+    useEffect(() => {
+        const cycle = () => {
+            setPhase('Inhale'); setText('INSPIRE...');
+            setTimeout(() => {
+                setPhase('Hold'); setText('SEGURE...');
+                setTimeout(() => {
+                    setPhase('Exhale'); setText('EXPIRE...');
+                    setTimeout(() => {
+                        setPhase('HoldEmpty'); setText('SEGURE...');
+                    }, 4000);
+                }, 4000);
+            }, 4000);
+        };
+
+        cycle();
+        const interval = setInterval(cycle, 16000); // 4+4+4+4 = 16s full cycle
+        return () => clearInterval(interval);
+    }, []);
+
+    return (
+        <div className="bg-slate-950 rounded-xl p-4 border border-slate-800 flex flex-col items-center justify-center text-center relative overflow-hidden h-full">
+             <div className="flex items-center gap-2 text-cyan-400 font-bold uppercase text-xs tracking-wider mb-8 z-10">
+                <Wind className="w-4 h-4" /> Respirador Tático
+            </div>
+
+            <div className="relative w-32 h-32 flex items-center justify-center mb-4">
+                {/* Animated Circles */}
+                <div className={`absolute inset-0 bg-cyan-500/20 rounded-full transition-all duration-[4000ms] ease-in-out ${
+                    phase === 'Inhale' ? 'scale-100 opacity-100' : 
+                    phase === 'Hold' ? 'scale-100 opacity-80' : 
+                    phase === 'Exhale' ? 'scale-50 opacity-50' : 'scale-50 opacity-30'
+                }`}></div>
+                <div className={`absolute inset-0 border-2 border-cyan-500 rounded-full transition-all duration-[4000ms] ease-in-out ${
+                    phase === 'Inhale' ? 'scale-100' : 
+                    phase === 'Hold' ? 'scale-110' : 
+                    phase === 'Exhale' ? 'scale-50' : 'scale-50'
+                }`}></div>
+                
+                <span className="relative z-10 text-white font-black text-sm tracking-widest animate-pulse">
+                    {text}
+                </span>
+            </div>
+            <p className="text-[10px] text-slate-500 max-w-[200px] z-10">
+                Controle sua respiração para baixar o cortisol e retomar o foco.
+            </p>
+        </div>
+    );
+};
+
 
 export const MindsetGuide: React.FC<Props> = ({ lastSession, sessions = [], currentBankroll = 0 }) => {
   
@@ -161,7 +349,23 @@ export const MindsetGuide: React.FC<Props> = ({ lastSession, sessions = [], curr
           </div>
       </div>
 
-      {/* --- DEBRIEFING TÁTICO (NEW SECTION) --- */}
+      {/* --- DOJO MENTAL (SALA DE DESCOMPRESSÃO) --- */}
+      <div className="bg-gradient-to-b from-slate-900 to-black p-6 rounded-xl border border-slate-800 shadow-lg relative overflow-hidden">
+           <div className="flex items-center gap-2 mb-6 border-b border-slate-800 pb-4">
+               <Brain className="w-5 h-5 text-purple-400" />
+               <h3 className="font-bold text-white uppercase tracking-wider">Dojo Mental (Área de Espera)</h3>
+           </div>
+           <p className="text-xs text-slate-400 mb-6">
+               O tédio quebra bancas. Use este tempo para afiar sua mente enquanto aguarda a próxima janela de oportunidade.
+           </p>
+
+           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+               <BreathingExercise />
+               <ReactionGame />
+           </div>
+      </div>
+
+      {/* --- DEBRIEFING TÁTICO --- */}
       {lastSession && debrief && (
           <div className="bg-slate-900 rounded-xl border border-slate-800 overflow-hidden shadow-lg">
               <div className="bg-slate-800 p-3 border-b border-slate-700 flex items-center gap-2">
