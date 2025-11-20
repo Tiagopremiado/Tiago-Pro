@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { BankrollConfig, Round, StrategyType } from '../types';
 import { STRATEGIES } from '../constants';
 import { SmartRecoveryModal } from './SmartRecoveryModal';
+import { ExternalAnalysis } from './ExternalAnalysis';
 import { Play, Square, PlusCircle, Clock, TrendingUp, TrendingDown, AlertTriangle, Trophy, Target, Volume2, Lock, ShieldCheck, Ban, Timer, Hash, Check, Settings, Zap, Wallet, Shield, Crosshair, ArrowUpRight, Calculator, Map, Gauge } from 'lucide-react';
 
 interface Props {
@@ -40,7 +41,21 @@ export const SessionManager: React.FC<Props> = ({
   const [showSummary, setShowSummary] = useState(false);
   const [showStrategyConfig, setShowStrategyConfig] = useState(false);
   const [showRecoveryModal, setShowRecoveryModal] = useState(false);
+  // State for Analysis Modal (TipMiner)
+  const [showAnalysis, setShowAnalysis] = useState(false);
+
   const audioRef = useRef<HTMLAudioElement | null>(null);
+
+  // Auto-open analysis when session starts
+  useEffect(() => {
+      if (isActive && startTime) {
+          // Apenas abre se for o início da sessão (tempo zerado ou muito baixo)
+          // Isso evita que reabra num refresh se não quiser
+          if (elapsedTime < 2) {
+              setShowAnalysis(true);
+          }
+      }
+  }, [isActive, startTime]);
 
   // Auto-update bet input when recommended bet changes (Compound Interest effect)
   useEffect(() => {
@@ -268,6 +283,7 @@ export const SessionManager: React.FC<Props> = ({
 
   const confirmEndSession = () => {
     setShowSummary(false);
+    setShowAnalysis(false); // Ensure analysis closes
     onEnd();
   };
 
@@ -468,6 +484,12 @@ export const SessionManager: React.FC<Props> = ({
   return (
     <div className="bg-slate-900 border border-slate-800 rounded-xl p-4 shadow-lg space-y-6 relative overflow-hidden">
       
+      {/* EXTERNAL ANALYSIS (TIPMINER) */}
+      <ExternalAnalysis 
+          isOpen={showAnalysis} 
+          onToggle={() => setShowAnalysis(!showAnalysis)} 
+      />
+
       {/* SMART RECOVERY MODAL */}
       {showRecoveryModal && (
           <SmartRecoveryModal 
