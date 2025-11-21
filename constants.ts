@@ -7,7 +7,7 @@ export const INITIAL_CONFIG = {
   betPercentage: 3.5, // UPDATED: Padrão solicitado de 3.5%
   stopLossPercentage: 15, // Média entre 10 e 20%
   stopWinPercentage: 7.5, // Média entre 5 e 10%
-  dailyGoalPercentage: 5.0, // Meta conservadora padrão
+  dailyGoalPercentage: 10.0, // UPDATED: Meta agressiva padrão de 10%
   defaultTargetMultiplier: 2.00, // UPDATED: Padrão solicitado de 2.00x
   strategyDefaults: {
     [StrategyType.EARLY_CASHOUT]: 2.00, // UPDATED: Agora inicia em 2.00x

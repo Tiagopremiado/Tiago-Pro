@@ -5,17 +5,19 @@ import { SessionManager } from './components/SessionManager';
 import { BankrollConfigCard } from './components/BankrollConfigCard';
 import { Analytics } from './components/Analytics';
 import { MindsetGuide } from './components/MindsetGuide';
+import { StudyCenter } from './components/StudyCenter'; // NEW IMPORT
 import { OnboardingWizard } from './components/OnboardingWizard'; 
 import { InstallPrompt } from './components/InstallPrompt'; 
 import { TiagoLogo } from './components/TiagoLogo'; 
 import { RankBadge } from './components/RankBadge'; 
-import { LayoutDashboard, PlayCircle, LineChart, BrainCircuit } from 'lucide-react';
+import { LayoutDashboard, PlayCircle, LineChart, BrainCircuit, GraduationCap } from 'lucide-react'; // Added GraduationCap
 import { INITIAL_STATE } from './constants'; 
 
 const App: React.FC = () => {
   const [state, setState] = useState<AppState>(INITIAL_STATE);
 
-  const [activeTab, setActiveTab] = useState<'session' | 'config' | 'analytics' | 'mindset'>('session');
+  // Added 'study' to tabs
+  const [activeTab, setActiveTab] = useState<'session' | 'config' | 'analytics' | 'mindset' | 'study'>('session');
   const [lastSession, setLastSession] = useState<DailySession | undefined>(undefined);
 
   // Load initial state
@@ -283,6 +285,11 @@ const App: React.FC = () => {
                  currentBankroll={state.config.currentCapital}
               />
             )}
+
+            {/* NEW STUDY TAB */}
+            {activeTab === 'study' && (
+                <StudyCenter />
+            )}
           </main>
       </div>
 
@@ -304,6 +311,15 @@ const App: React.FC = () => {
             icon={LineChart} 
             label="Dados" 
             colorClass="text-blue-400"
+          />
+
+          {/* BUTTON STUDAR */}
+          <NavButton 
+            active={activeTab === 'study'} 
+            onClick={() => setActiveTab('study')} 
+            icon={GraduationCap} 
+            label="Estudar" 
+            colorClass="text-pink-400"
           />
 
           <NavButton 
@@ -333,7 +349,7 @@ const NavButton = ({ active, onClick, icon: Icon, label, colorClass }: any) => (
     <button 
         onClick={onClick}
         className={`
-            relative flex flex-col items-center justify-center w-16 h-16 rounded-2xl transition-all duration-300
+            relative flex flex-col items-center justify-center w-14 h-16 rounded-2xl transition-all duration-300
             ${active ? 'scale-110 -translate-y-2' : 'text-slate-500 hover:text-slate-300 hover:bg-white/5'}
         `}
     >
@@ -347,7 +363,7 @@ const NavButton = ({ active, onClick, icon: Icon, label, colorClass }: any) => (
             strokeWidth={active ? 2.5 : 2}
         />
         
-        <span className={`text-[10px] font-bold mt-1 transition-colors ${active ? colorClass : 'text-slate-500'}`}>
+        <span className={`text-[9px] font-bold mt-1 transition-colors ${active ? colorClass : 'text-slate-500'}`}>
             {label}
         </span>
         

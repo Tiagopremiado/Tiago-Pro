@@ -32,11 +32,19 @@ export const SessionManager: React.FC<Props> = ({
   todayProfit = 0
 }) => {
   const [elapsedTime, setElapsedTime] = useState(0);
-  // Recommended Bet calculation
-  const recommendedBet = (config.currentCapital * (config.betPercentage / 100)).toFixed(2);
+
+  // --- CORE CALCULATIONS ---
+  // Calculate profit of current session
+  const sessionProfit = rounds.reduce((acc, r) => acc + r.profit, 0);
+  
+  // Calculate Capital at the START of this session (Current - Profit made now)
+  // This ensures calculations are stable during gameplay.
+  const sessionStartCapital = config.currentCapital - sessionProfit;
+
+  // Recommended Bet: Fixed based on Session Start Capital (3.5% of 100, not 103.5)
+  const recommendedBet = (sessionStartCapital * (config.betPercentage / 100)).toFixed(2);
   
   const [betInput, setBetInput] = useState<string>(recommendedBet);
-  // UPDATED: Fallback to 2.00 instead of 1.20
   const [multInput, setMultInput] = useState<string>(config.defaultTargetMultiplier?.toString() || '2.00');
   const [selectedStrategy, setSelectedStrategy] = useState<StrategyType>(StrategyType.EARLY_CASHOUT);
   const [timeToUnlock, setTimeToUnlock] = useState<string>('');
@@ -44,7 +52,6 @@ export const SessionManager: React.FC<Props> = ({
   const [showStrategyConfig, setShowStrategyConfig] = useState(false);
   const [showRecoveryModal, setShowRecoveryModal] = useState(false);
   
-  // REPLACED simple boolean with Mode State for Split View support
   const [analysisMode, setAnalysisMode] = useState<AnalysisMode>('closed');
 
   const audioRef = useRef<HTMLAudioElement | null>(null);
@@ -52,32 +59,17 @@ export const SessionManager: React.FC<Props> = ({
   // Auto-open analysis in SPLIT MODE when session starts
   useEffect(() => {
       if (isActive && startTime) {
-          // Apenas abre se for o início da sessão (tempo zerado ou muito baixo)
           if (elapsedTime < 2) {
               setAnalysisMode('split');
           }
-      } else {
-          // If session is not active, reset or keep based on user action.
-          // Usually we want Recon Mode to be separate.
       }
   }, [isActive, startTime]);
 
-  // Auto-update bet input when recommended bet changes (Compound Interest effect)
+  // Auto-update bet input ONLY when recommendedBet changes (which now only happens if user changes % in settings, not on wins)
   useEffect(() => {
     setBetInput(recommendedBet);
   }, [recommendedBet]);
 
-  // --- FIXED GOAL LOGIC ---
-  // We need to calculate the daily goal based on the START of session capital, not current.
-  // But `config.currentCapital` updates live.
-  // We can reverse engineer the start capital of this specific session using `todayProfit` if we assume one session per day, 
-  // but better is to use `config.currentCapital` minus `sessionProfit` (local session).
-  // HOWEVER, to fix the "Moving Target Paradox", the goal needs to be calculated based on the capital BEFORE this session started.
-  
-  const sessionProfit = rounds.reduce((acc, r) => acc + r.profit, 0);
-  
-  // The capital before THIS session began.
-  const sessionStartCapital = config.currentCapital - sessionProfit;
   
   // Fixed calculations based on Session Start Capital
   const stopLossValue = -(sessionStartCapital * (config.stopLossPercentage / 100));
@@ -103,10 +95,8 @@ export const SessionManager: React.FC<Props> = ({
       // Lógica complexa para Duas Apostas vs Simples
       if (selectedStrategy === StrategyType.TWO_BETS) {
           const cover = config.strategyDefaults?.[StrategyType.TWO_BETS + '_COVER'] || 1.20;
-          // Assumindo que o input multInput é o alvo principal
           const target = parseFloat(multInput) || 2.00; 
           
-          // Lucro = (Bet*0.6 * Cover) + (Bet*0.4 * Target) - BetTotal
           const gainCover = (currentBet * 0.60) * cover;
           const gainTarget = (currentBet * 0.40) * target;
           profitPerRound = (gainCover + gainTarget) - currentBet;
@@ -291,6 +281,13 @@ export const SessionManager: React.FC<Props> = ({
       const isWin = lockStatus === 'WIN';
       return (
           <div className={`flex flex-col items-center justify-center py-12 px-4 rounded-xl border shadow-2xl relative overflow-hidden ${isWin ? 'bg-slate-900 border-emerald-800' : 'bg-slate-900 border-red-900'}`}>
+              {/* External Analysis in Observation Mode */}
+              <ExternalAnalysis 
+                  mode={analysisMode} 
+                  setMode={setAnalysisMode}
+                  isSessionActive={false} 
+              />
+
               <div className="absolute inset-0 opacity-5 pointer-events-none" 
                   style={{backgroundImage: 'radial-gradient(circle, #ffffff 1px, transparent 1px)', backgroundSize: '20px 20px'}}>
               </div>
@@ -299,7 +296,7 @@ export const SessionManager: React.FC<Props> = ({
               </div>
               <h3 className="text-2xl font-black text-white mb-2 uppercase tracking-widest text-center">SISTEMA BLOQUEADO</h3>
               <p className="font-mono text-3xl font-bold mb-6 text-slate-300 bg-slate-950 px-6 py-2 rounded-lg border border-slate-800">{timeToUnlock || "Calculando..."}</p>
-              <div className="bg-slate-950/80 p-6 rounded-lg max-w-sm text-center border border-slate-800 shadow-inner">
+              <div className="bg-slate-950/80 p-6 rounded-lg max-w-sm text-center border border-slate-800 shadow-inner mb-6">
                   {isWin ? (
                       <>
                         <p className="text-emerald-400 font-bold text-lg mb-2">META BATIDA! (+R$ {todayProfit.toFixed(2)})</p>
@@ -312,6 +309,15 @@ export const SessionManager: React.FC<Props> = ({
                       </>
                   )}
               </div>
+
+              {/* Study Mode Button */}
+              <button
+                  onClick={() => setAnalysisMode('full')}
+                  className="bg-blue-600/10 hover:bg-blue-600/20 border border-blue-500/50 text-blue-400 hover:text-white px-6 py-3 rounded-lg flex items-center gap-2 transition-all font-bold text-sm uppercase tracking-wide shadow-lg"
+              >
+                  <Eye className="w-4 h-4" /> Analisar Gráfico (Modo Estudo)
+              </button>
+
               <div className="mt-8 flex items-center gap-2 text-xs text-slate-600 uppercase tracking-wider">
                   <Lock className="w-3 h-3" /> Liberação Automática: 00:01
               </div>
@@ -409,7 +415,7 @@ export const SessionManager: React.FC<Props> = ({
                  </div>
                  <div className="bg-slate-800/50 p-3 rounded-lg border border-slate-700">
                      <div className="flex items-center gap-2 mb-2 text-aviator-gold text-xs">
-                         <Crosshair className="w-3 h-3" /> Entrada (1-2%)
+                         <Crosshair className="w-3 h-3" /> Entrada ({config.betPercentage}%)
                      </div>
                      <div className="text-lg font-bold text-white">R$ {recommendedBet}</div>
                  </div>

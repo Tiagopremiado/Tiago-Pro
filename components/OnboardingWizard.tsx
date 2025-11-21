@@ -14,7 +14,7 @@ export const OnboardingWizard: React.FC<Props> = ({ onComplete }) => {
     betPercentage: 3.5, // UPDATED: Padrão 3.5%
     stopLossPercentage: 15,
     stopWinPercentage: 5,
-    dailyGoalPercentage: 5,
+    dailyGoalPercentage: 10, // UPDATED: Padrão 10%
     defaultTargetMultiplier: 2.00, // UPDATED: Padrão 2.00x
     strategyDefaults: {
         'SAQUE_PRECOCE': 2.00, // UPDATED: Default 2.00x
