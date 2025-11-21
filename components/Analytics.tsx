@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { DailySession, Round } from '../types';
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, BarChart, Bar, Cell, ReferenceLine } from 'recharts';
-import { TrendingUp, Calendar, Calculator, DollarSign, ChevronRight, CalendarDays, Clock, BarChart3, Percent, AlertTriangle, ChevronDown, ChevronUp, Search, Trash2, Zap, TrendingDown, Bomb, Wallet } from 'lucide-react';
+import { TrendingUp, Calendar, Calculator, DollarSign, ChevronRight, CalendarDays, Clock, BarChart3, Percent, AlertTriangle, ChevronDown, ChevronUp, Search, Trash2, Zap, TrendingDown, Bomb, Wallet, Timer } from 'lucide-react';
 
 interface Props {
   sessions: DailySession[];
@@ -10,6 +10,8 @@ interface Props {
   currentBankroll: number;
   onClearHistory: () => void;
 }
+
+type RadarView = 'hour' | 'minute' | 'day' | 'month';
 
 export const Analytics: React.FC<Props> = ({ sessions, initialBankroll, dailyGoalPercent = 5, currentBankroll, onClearHistory }) => {
   // --- STATE FOR SIMULATOR ---
@@ -24,8 +26,9 @@ export const Analytics: React.FC<Props> = ({ sessions, initialBankroll, dailyGoa
   // --- STATE FOR DELETE CONFIRMATION ---
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
 
-  // --- STATE FOR TIME ANALYSIS METRIC ---
+  // --- STATE FOR TIME ANALYSIS ---
   const [timeMetric, setTimeMetric] = useState<'profit' | 'rate'>('profit');
+  const [radarView, setRadarView] = useState<RadarView>('hour');
 
   // Update simulator defaults if props change (only on mount or major update)
   useEffect(() => {
@@ -79,11 +82,9 @@ export const Analytics: React.FC<Props> = ({ sessions, initialBankroll, dailyGoa
             realValue = currentSession.endBalance;
 
             // DETECT DEPOSIT (Aporte de Aceleração)
-            // Logic: If (Current Session Start Balance) > (Previous Session End Balance), the difference is a deposit/adjustment.
             const prevSession = sortedSessions[i-2];
             const prevBalance = prevSession ? prevSession.endBalance : initialBankroll;
             
-            // We use a small threshold (e.g., 1.00) to avoid detecting tiny floating point rounding errors as deposits
             const gap = currentSession.startBalance - prevBalance;
             if (gap > 1) { 
                 depositAmount = gap;
@@ -100,7 +101,7 @@ export const Analytics: React.FC<Props> = ({ sessions, initialBankroll, dailyGoa
           day: i,
           ideal: idealValue,
           real: realValue,
-          deposit: depositAmount > 0 ? depositAmount : null // Store for Tooltip/Visualization
+          deposit: depositAmount > 0 ? depositAmount : null
       });
 
       if (i < simDays) {
@@ -113,31 +114,25 @@ export const Analytics: React.FC<Props> = ({ sessions, initialBankroll, dailyGoa
     // Initialize 24h buckets
     const hours = Array.from({ length: 24 }, (_, i) => ({
         name: `${i}h`,
-        hour: i,
-        profit: 0,
-        wins: 0,
-        total: 0,
-        rate: 0
+        profit: 0, wins: 0, total: 0, rate: 0
+    }));
+
+    // Initialize Minute buckets (12 buckets of 5 mins)
+    const minutes = Array.from({ length: 12 }, (_, i) => ({
+        name: `${i * 5}-${(i + 1) * 5}`,
+        profit: 0, wins: 0, total: 0, rate: 0
     }));
 
     // Initialize Weekday buckets
     const daysOfWeek = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'].map((d, i) => ({
         name: d,
-        dayIndex: i,
-        profit: 0,
-        wins: 0,
-        total: 0,
-        rate: 0
+        profit: 0, wins: 0, total: 0, rate: 0
     }));
 
     // Initialize Month Day buckets (1-31)
     const daysOfMonth = Array.from({ length: 31 }, (_, i) => ({
-        name: `${i + 1}`, // Day 1, 2, ... 31
-        dayIndex: i,
-        profit: 0,
-        wins: 0,
-        total: 0,
-        rate: 0
+        name: `${i + 1}`,
+        profit: 0, wins: 0, total: 0, rate: 0
     }));
 
     // Flatten all rounds from all sessions
@@ -146,14 +141,23 @@ export const Analytics: React.FC<Props> = ({ sessions, initialBankroll, dailyGoa
     allRounds.forEach(r => {
         const date = new Date(r.timestamp);
         const h = date.getHours();
+        const m = date.getMinutes();
         const d = date.getDay(); // 0-6
         const dom = date.getDate() - 1; // 1-31 -> 0-30 index
+        const mBucket = Math.floor(m / 5); // 0-11 index
 
         // Update Hourly
         if(hours[h]) {
             hours[h].profit += r.profit;
             hours[h].total += 1;
             if (r.win) hours[h].wins += 1;
+        }
+
+        // Update Minutes
+        if(minutes[mBucket]) {
+            minutes[mBucket].profit += r.profit;
+            minutes[mBucket].total += 1;
+            if (r.win) minutes[mBucket].wins += 1;
         }
 
         // Update Daily (Week)
@@ -178,27 +182,33 @@ export const Analytics: React.FC<Props> = ({ sessions, initialBankroll, dailyGoa
     });
 
     const hoursWithStats = hours.map(calcRate);
+    const minutesWithStats = minutes.map(calcRate);
     const daysWithStats = daysOfWeek.map(calcRate);
     const monthDaysWithStats = daysOfMonth.map(calcRate);
 
-    // Sort for Best (Highest Profit)
-    const bestHourProfit = [...hoursWithStats].sort((a, b) => b.profit - a.profit)[0];
+    // Determines which dataset to use for Best/Worst calculation based on current view
+    let currentDataset = hoursWithStats;
+    if (radarView === 'minute') currentDataset = minutesWithStats;
+    if (radarView === 'day') currentDataset = daysWithStats;
+    if (radarView === 'month') currentDataset = monthDaysWithStats;
+
+    // Sort for Best (Highest Profit / Rate)
+    const bestProfit = [...currentDataset].sort((a, b) => b.profit - a.profit)[0];
+    const bestRate = [...currentDataset].filter(h => h.total >= 2).sort((a, b) => b.rate - a.rate)[0] || currentDataset[0];
     
-    // Sort for Best (Highest Win Rate) - min 2 rounds to be significant
-    const bestHourRate = [...hoursWithStats].filter(h => h.total >= 2).sort((a, b) => b.rate - a.rate)[0] || hoursWithStats[0];
-    
-    // Sort for Worst (Lowest Profit / Highest Loss)
-    const worstHourProfit = [...hoursWithStats].sort((a, b) => a.profit - b.profit)[0];
-    const worstHourRate = [...hoursWithStats].filter(h => h.total >= 2).sort((a, b) => a.rate - b.rate)[0];
+    // Sort for Worst (Lowest Profit / Rate)
+    const worstProfit = [...currentDataset].sort((a, b) => a.profit - b.profit)[0];
+    const worstRate = [...currentDataset].filter(h => h.total >= 2).sort((a, b) => a.rate - b.rate)[0];
 
     return { 
         hours: hoursWithStats, 
+        minutes: minutesWithStats,
         daysOfWeek: daysWithStats, 
         daysOfMonth: monthDaysWithStats,
-        bestHourProfit, 
-        bestHourRate,
-        worstHourProfit,
-        worstHourRate,
+        bestProfit, 
+        bestRate,
+        worstProfit,
+        worstRate,
         totalRounds: allRounds.length 
     };
   };
@@ -214,15 +224,13 @@ export const Analytics: React.FC<Props> = ({ sessions, initialBankroll, dailyGoa
       setShowDeleteConfirm(false);
   };
 
-  // CUSTOM TOOLTIP COMPONENTS
+  // --- COMPONENTS FOR CHARTS ---
   const CustomChartTooltip = ({ active, payload, label }: any) => {
     if (active && payload && payload.length) {
       const data = payload[0].payload;
       return (
         <div className="bg-slate-950 border border-slate-700 p-3 rounded-lg shadow-2xl min-w-[150px]">
           <p className="text-slate-400 text-xs mb-2">Dia {label}</p>
-          
-          {/* Exibe Aporte se houver */}
           {data.deposit && (
               <div className="mb-2 pb-2 border-b border-slate-800">
                   <p className="text-[10px] text-slate-500 uppercase font-bold flex items-center gap-1">
@@ -231,7 +239,6 @@ export const Analytics: React.FC<Props> = ({ sessions, initialBankroll, dailyGoa
                   <p className="text-emerald-400 font-black text-sm">+ R$ {data.deposit.toFixed(2)}</p>
               </div>
           )}
-
           {data.real !== null && (
             <div className="mb-1">
                 <span className="text-emerald-500 font-bold text-sm">Real: </span>
@@ -250,12 +257,17 @@ export const Analytics: React.FC<Props> = ({ sessions, initialBankroll, dailyGoa
     return null;
   };
 
-  const CustomBarTooltip = ({ active, payload, label }: any) => {
+  const CustomBarTooltip = ({ active, payload }: any) => {
       if (active && payload && payload.length) {
           const data = payload[0].payload;
           return (
-              <div className="bg-slate-950 border border-slate-700 p-4 rounded-lg shadow-2xl min-w-[180px]">
-                  <p className="text-white font-black text-lg mb-3 border-b border-slate-800 pb-2">{data.name}</p>
+              <div className="bg-slate-950 border border-slate-700 p-4 rounded-lg shadow-2xl min-w-[180px] z-50">
+                  <p className="text-white font-black text-lg mb-3 border-b border-slate-800 pb-2">
+                      {radarView === 'hour' ? `${data.name} (Horário)` : 
+                       radarView === 'minute' ? `Minuto ${data.name}` :
+                       radarView === 'month' ? `Dia ${data.name}` :
+                       data.name}
+                  </p>
                   <div className="space-y-2 text-xs">
                       <div className="flex justify-between items-center gap-4 text-slate-400">
                           <span className="font-bold">Volume:</span> 
@@ -280,7 +292,6 @@ export const Analytics: React.FC<Props> = ({ sessions, initialBankroll, dailyGoa
       return null;
   };
 
-  // CUSTOM DOT FOR APORTE
   const CustomDot = (props: any) => {
       const { cx, cy, payload } = props;
       if (payload && payload.deposit) {
@@ -330,6 +341,7 @@ export const Analytics: React.FC<Props> = ({ sessions, initialBankroll, dailyGoa
 
       {/* --- SIMULADOR DE FUTURO --- */}
       <div className="bg-slate-900 rounded-xl border border-aviator-gold/50 overflow-hidden shadow-xl shadow-black/50">
+        {/* ... (Simulador code remains unchanged) ... */}
         <div className="bg-gradient-to-r from-slate-900 to-slate-800 p-4 border-b border-slate-800 flex items-center gap-2">
             <Calculator className="w-5 h-5 text-aviator-gold" />
             <h2 className="text-lg font-bold text-white">Simulador de Riqueza 2026</h2>
@@ -454,41 +466,65 @@ export const Analytics: React.FC<Props> = ({ sessions, initialBankroll, dailyGoa
         </div>
       </div>
 
-      {/* --- RADAR DE PERFORMANCE TEMPORAL (TRIPLE CHARTS) --- */}
+      {/* --- RADAR DE PERFORMANCE TEMPORAL (TABBED INTERFACE) --- */}
       {timeStats.totalRounds > 0 && (
-          <div className="bg-slate-900 rounded-xl border border-slate-800 p-6 space-y-8 shadow-lg relative overflow-hidden">
+          <div className="bg-slate-900 rounded-xl border border-slate-800 p-6 space-y-6 shadow-lg relative overflow-hidden">
              {/* Header */}
-             <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
-                 <div className="flex items-center gap-3">
-                    <div className="bg-emerald-500/20 p-2 rounded-lg">
-                        <BarChart3 className="w-6 h-6 text-emerald-400" />
+             <div className="flex flex-col gap-4">
+                 <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+                    <div className="flex items-center gap-3">
+                        <div className="bg-emerald-500/20 p-2 rounded-lg">
+                            <BarChart3 className="w-6 h-6 text-emerald-400" />
+                        </div>
+                        <div>
+                            <h2 className="text-xl font-black text-white tracking-tight">RADAR DE PADRÕES</h2>
+                            <p className="text-xs text-slate-400 font-medium">Inteligência Temporal: Onde o dinheiro está.</p>
+                        </div>
                     </div>
-                    <div>
-                        <h2 className="text-xl font-black text-white tracking-tight">RADAR DE PADRÕES</h2>
-                        <p className="text-xs text-slate-400 font-medium">Inteligência Temporal: Onde o dinheiro está.</p>
+
+                    {/* Metric Switcher (Profit/Rate) */}
+                    <div className="bg-slate-950 p-1 rounded-lg border border-slate-800 flex">
+                        <button 
+                            onClick={() => setTimeMetric('profit')}
+                            className={`px-3 py-1.5 text-[10px] font-bold rounded transition-all ${timeMetric === 'profit' ? 'bg-emerald-500 text-black' : 'text-slate-500 hover:text-slate-300'}`}
+                        >
+                            LUCRO (R$)
+                        </button>
+                        <button 
+                            onClick={() => setTimeMetric('rate')}
+                            className={`px-3 py-1.5 text-[10px] font-bold rounded transition-all ${timeMetric === 'rate' ? 'bg-blue-500 text-white' : 'text-slate-500 hover:text-slate-300'}`}
+                        >
+                            ASSERTIVIDADE (%)
+                        </button>
                     </div>
                  </div>
-                 
-                 {/* Toggle */}
-                 <div className="bg-slate-950 p-1 rounded-lg border border-slate-800 flex self-start">
-                     <button 
-                        onClick={() => setTimeMetric('profit')}
-                        className={`px-4 py-2 text-xs font-bold rounded transition-all ${timeMetric === 'profit' ? 'bg-emerald-500 text-black shadow-lg shadow-emerald-900/20' : 'text-slate-500 hover:text-slate-300'}`}
-                     >
-                        LUCRO (R$)
-                     </button>
-                     <button 
-                        onClick={() => setTimeMetric('rate')}
-                        className={`px-4 py-2 text-xs font-bold rounded transition-all ${timeMetric === 'rate' ? 'bg-blue-500 text-white shadow-lg shadow-blue-900/20' : 'text-slate-500 hover:text-slate-300'}`}
-                     >
-                        ASSERTIVIDADE (%)
-                     </button>
+
+                 {/* View Switcher (Tabs) */}
+                 <div className="flex gap-2 overflow-x-auto pb-2 md:pb-0 custom-scrollbar">
+                     {[
+                         { id: 'hour', label: 'HORA (24H)', icon: Clock },
+                         { id: 'minute', label: 'MINUTOS (5M)', icon: Timer },
+                         { id: 'day', label: 'DIA DA SEMANA', icon: Calendar },
+                         { id: 'month', label: 'CICLO MENSAL', icon: CalendarDays }
+                     ].map(tab => (
+                         <button
+                            key={tab.id}
+                            onClick={() => setRadarView(tab.id as RadarView)}
+                            className={`flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-bold whitespace-nowrap transition-all border ${
+                                radarView === tab.id 
+                                ? 'bg-slate-800 border-aviator-gold text-aviator-gold' 
+                                : 'bg-slate-950 border-slate-800 text-slate-400 hover:bg-slate-800'
+                            }`}
+                         >
+                             <tab.icon className="w-3 h-3" /> {tab.label}
+                         </button>
+                     ))}
                  </div>
              </div>
 
-             {/* Highlights Cards */}
+             {/* Dynamic Highlights Cards (Adapts to View) */}
              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                 {/* Best Hour Card */}
+                 {/* Best Moment Card */}
                  <div className="bg-gradient-to-br from-emerald-900/20 to-slate-900 border border-emerald-500/30 p-5 rounded-xl relative group overflow-hidden">
                      <div className="absolute top-0 right-0 p-4 opacity-10">
                          <Zap className="w-24 h-24 text-emerald-400" />
@@ -497,11 +533,16 @@ export const Analytics: React.FC<Props> = ({ sessions, initialBankroll, dailyGoa
                          <div className="flex justify-between items-start mb-2">
                              <div>
                                  <div className="flex items-center gap-2 mb-1">
-                                    <Clock className="w-4 h-4 text-emerald-400" />
-                                    <span className="text-xs font-bold text-emerald-400 uppercase tracking-widest">Melhor Horário</span>
+                                    {radarView === 'minute' ? <Timer className="w-4 h-4 text-emerald-400" /> : <Clock className="w-4 h-4 text-emerald-400" />}
+                                    <span className="text-xs font-bold text-emerald-400 uppercase tracking-widest">
+                                        {radarView === 'minute' ? 'Melhor Intervalo' : 'Melhor Momento'}
+                                    </span>
                                  </div>
-                                 <span className="text-4xl font-black text-white block mt-2">
-                                     {timeMetric === 'profit' ? timeStats.bestHourProfit?.name : timeStats.bestHourRate?.name}
+                                 <span className="text-3xl font-black text-white block mt-2 truncate">
+                                     {timeMetric === 'profit' 
+                                        ? (timeStats.bestProfit ? timeStats.bestProfit.name + (radarView === 'minute' ? 'min' : '') : '--')
+                                        : (timeStats.bestRate ? timeStats.bestRate.name + (radarView === 'minute' ? 'min' : '') : '--')
+                                     }
                                  </span>
                              </div>
                          </div>
@@ -510,20 +551,16 @@ export const Analytics: React.FC<Props> = ({ sessions, initialBankroll, dailyGoa
                                 <p className="text-[10px] text-slate-400 uppercase">Resultado</p>
                                 <p className="text-lg font-bold text-white">
                                     {timeMetric === 'profit' 
-                                        ? `+ R$ ${timeStats.bestHourProfit?.profit.toFixed(2)}`
-                                        : `${timeStats.bestHourRate?.rate.toFixed(0)}% Win Rate`
+                                        ? `+ R$ ${timeStats.bestProfit?.profit.toFixed(2)}`
+                                        : `${timeStats.bestRate?.rate.toFixed(0)}% Win Rate`
                                      }
                                 </p>
-                             </div>
-                             <div className="text-right">
-                                 <p className="text-[10px] text-slate-400 uppercase">Volume</p>
-                                 <p className="text-sm font-bold text-white">{timeMetric === 'profit' ? timeStats.bestHourProfit?.total : timeStats.bestHourRate?.total} Entradas</p>
                              </div>
                          </div>
                      </div>
                  </div>
 
-                 {/* Worst Hour Card (Danger Zone) */}
+                 {/* Worst Moment Card */}
                  <div className="bg-gradient-to-br from-red-900/20 to-slate-900 border border-red-500/30 p-5 rounded-xl relative group overflow-hidden">
                      <div className="absolute top-0 right-0 p-4 opacity-10">
                          <AlertTriangle className="w-24 h-24 text-red-500" />
@@ -533,12 +570,12 @@ export const Analytics: React.FC<Props> = ({ sessions, initialBankroll, dailyGoa
                              <div>
                                  <div className="flex items-center gap-2 mb-1">
                                     <TrendingDown className="w-4 h-4 text-red-500" />
-                                    <span className="text-xs font-bold text-red-500 uppercase tracking-widest">Zona de Perigo (Evitar)</span>
+                                    <span className="text-xs font-bold text-red-500 uppercase tracking-widest">Zona de Perigo</span>
                                  </div>
-                                 <span className="text-4xl font-black text-white block mt-2">
+                                 <span className="text-3xl font-black text-white block mt-2 truncate">
                                      {timeMetric === 'profit' 
-                                        ? (timeStats.worstHourProfit?.profit < 0 ? timeStats.worstHourProfit?.name : '--')
-                                        : (timeStats.worstHourRate ? timeStats.worstHourRate?.name : '--')
+                                        ? (timeStats.worstProfit?.profit < 0 ? timeStats.worstProfit?.name + (radarView === 'minute' ? 'min' : '') : '--')
+                                        : (timeStats.worstRate ? timeStats.worstRate?.name + (radarView === 'minute' ? 'min' : '') : '--')
                                      }
                                  </span>
                              </div>
@@ -548,164 +585,81 @@ export const Analytics: React.FC<Props> = ({ sessions, initialBankroll, dailyGoa
                                 <p className="text-[10px] text-slate-400 uppercase">Prejuízo / Pior Taxa</p>
                                 <p className="text-lg font-bold text-red-400">
                                     {timeMetric === 'profit' 
-                                        ? (timeStats.worstHourProfit?.profit < 0 ? `R$ ${timeStats.worstHourProfit?.profit.toFixed(2)}` : 'Sem prejuízos')
-                                        : (timeStats.worstHourRate ? `${timeStats.worstHourRate?.rate.toFixed(0)}% Win Rate` : 'N/A')
+                                        ? (timeStats.worstProfit?.profit < 0 ? `R$ ${timeStats.worstProfit?.profit.toFixed(2)}` : 'Sem prejuízos')
+                                        : (timeStats.worstRate ? `${timeStats.worstRate?.rate.toFixed(0)}% Win Rate` : 'N/A')
                                      }
                                 </p>
-                             </div>
-                             <div className="text-right">
-                                 <p className="text-[10px] text-slate-400 uppercase">Volume</p>
-                                 <p className="text-sm font-bold text-white">
-                                    {timeMetric === 'profit' ? timeStats.worstHourProfit?.total : timeStats.worstHourRate?.total} Entradas
-                                 </p>
                              </div>
                          </div>
                      </div>
                  </div>
              </div>
 
-             {/* COMPARATIVE CHARTS CONTAINER */}
-             <div className="space-y-6">
-                 
-                 {/* TOP ROW: HOURLY & WEEKLY */}
-                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                    {/* CHART 1: HOURLY PERFORMANCE */}
-                    <div className="bg-slate-950 p-4 rounded-lg border border-slate-800">
-                        <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-6 gap-4">
-                            <h3 className="text-sm font-bold text-slate-200 flex items-center gap-2">
-                                <Clock className="w-4 h-4 text-slate-500" /> Performance por Horário (24h)
-                            </h3>
-                        </div>
-
-                        <div className="h-56 w-full">
-                            <ResponsiveContainer width="100%" height="100%">
-                                <BarChart data={timeStats.hours} margin={{top: 10, right: 0, left: -20, bottom: 0}}>
-                                    <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" vertical={false} />
-                                    <XAxis 
-                                        dataKey="name" 
-                                        axisLine={false} 
-                                        tickLine={false} 
-                                        tick={{fill: '#94a3b8', fontSize: 10, fontWeight: 500}} 
-                                        interval={3}
+             {/* MAIN CHART DISPLAY */}
+             <div className="bg-slate-950 p-4 rounded-lg border border-slate-800 min-h-[300px]">
+                <div className="h-64 w-full">
+                    <ResponsiveContainer width="100%" height="100%">
+                        <BarChart 
+                            data={
+                                radarView === 'hour' ? timeStats.hours :
+                                radarView === 'minute' ? timeStats.minutes :
+                                radarView === 'day' ? timeStats.daysOfWeek :
+                                timeStats.daysOfMonth
+                            } 
+                            margin={{top: 10, right: 0, left: -20, bottom: 0}}
+                        >
+                            <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" vertical={false} />
+                            <XAxis 
+                                dataKey="name" 
+                                axisLine={false} 
+                                tickLine={false} 
+                                tick={{fill: '#94a3b8', fontSize: 10, fontWeight: 500}} 
+                                interval={radarView === 'month' ? 2 : 0}
+                            />
+                            <YAxis 
+                                axisLine={false} 
+                                tickLine={false} 
+                                tick={{fill: '#94a3b8', fontSize: 10}}
+                            />
+                            <Tooltip content={<CustomBarTooltip />} cursor={{fill: 'rgba(255,255,255,0.05)'}} />
+                            <Bar dataKey={timeMetric} radius={[4, 4, 0, 0]} maxBarSize={radarView === 'minute' ? 60 : 40}>
+                                {
+                                    (radarView === 'hour' ? timeStats.hours :
+                                     radarView === 'minute' ? timeStats.minutes :
+                                     radarView === 'day' ? timeStats.daysOfWeek :
+                                     timeStats.daysOfMonth).map((entry, index) => (
+                                    <Cell 
+                                        key={`cell-${index}`} 
+                                        fill={
+                                            timeMetric === 'rate' 
+                                                ? (entry.rate >= 50 ? '#10B981' : '#EF4444')
+                                                : (entry.profit >= 0 ? '#10B981' : '#EF4444')
+                                        }
+                                        fillOpacity={timeMetric === 'rate' ? (entry.total > 0 ? 1 : 0.1) : 1}
                                     />
-                                    <YAxis 
-                                        axisLine={false} 
-                                        tickLine={false} 
-                                        tick={{fill: '#94a3b8', fontSize: 10}}
-                                    />
-                                    <Tooltip content={<CustomBarTooltip />} cursor={{fill: 'rgba(255,255,255,0.05)'}} />
-                                    <Bar dataKey={timeMetric} radius={[4, 4, 0, 0]} maxBarSize={40}>
-                                        {timeStats.hours.map((entry, index) => (
-                                            <Cell 
-                                                key={`cell-${index}`} 
-                                                fill={
-                                                    timeMetric === 'rate' 
-                                                        ? (entry.rate >= 50 ? '#10B981' : '#EF4444')
-                                                        : (entry.profit >= 0 ? '#10B981' : '#EF4444')
-                                                }
-                                                fillOpacity={timeMetric === 'rate' ? (entry.total > 0 ? 1 : 0.1) : 1}
-                                            />
-                                        ))}
-                                    </Bar>
-                                    <ReferenceLine y={0} stroke="#334155" />
-                                </BarChart>
-                            </ResponsiveContainer>
-                        </div>
-                    </div>
-
-                    {/* CHART 2: WEEKLY PERFORMANCE */}
-                    <div className="bg-slate-950 p-4 rounded-lg border border-slate-800">
-                        <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-6 gap-4">
-                            <h3 className="text-sm font-bold text-slate-200 flex items-center gap-2">
-                                <Calendar className="w-4 h-4 text-slate-500" /> Performance Semanal (7 Dias)
-                            </h3>
-                        </div>
-
-                        <div className="h-56 w-full">
-                            <ResponsiveContainer width="100%" height="100%">
-                                <BarChart data={timeStats.daysOfWeek} margin={{top: 10, right: 0, left: -20, bottom: 0}}>
-                                    <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" vertical={false} />
-                                    <XAxis 
-                                        dataKey="name" 
-                                        axisLine={false} 
-                                        tickLine={false} 
-                                        tick={{fill: '#94a3b8', fontSize: 10, fontWeight: 500}} 
-                                    />
-                                    <YAxis 
-                                        axisLine={false} 
-                                        tickLine={false} 
-                                        tick={{fill: '#94a3b8', fontSize: 10}}
-                                    />
-                                    <Tooltip content={<CustomBarTooltip />} cursor={{fill: 'rgba(255,255,255,0.05)'}} />
-                                    <Bar dataKey={timeMetric} radius={[4, 4, 0, 0]} maxBarSize={40}>
-                                        {timeStats.daysOfWeek.map((entry, index) => (
-                                            <Cell 
-                                                key={`cell-${index}`} 
-                                                fill={
-                                                    timeMetric === 'rate' 
-                                                        ? (entry.rate >= 50 ? '#10B981' : '#EF4444')
-                                                        : (entry.profit >= 0 ? '#10B981' : '#EF4444')
-                                                }
-                                                fillOpacity={timeMetric === 'rate' ? (entry.total > 0 ? 1 : 0.1) : 1}
-                                            />
-                                        ))}
-                                    </Bar>
-                                    <ReferenceLine y={0} stroke="#334155" />
-                                </BarChart>
-                            </ResponsiveContainer>
-                        </div>
-                    </div>
-                 </div>
-
-                 {/* CHART 3: MONTHLY PERFORMANCE (30 DAYS) */}
-                 <div className="bg-slate-950 p-4 rounded-lg border border-slate-800">
-                        <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-6 gap-4">
-                            <h3 className="text-sm font-bold text-slate-200 flex items-center gap-2">
-                                <CalendarDays className="w-4 h-4 text-slate-500" /> Ciclo Mensal (Dia 1 ao 31)
-                            </h3>
-                        </div>
-
-                        <div className="h-56 w-full">
-                            <ResponsiveContainer width="100%" height="100%">
-                                <BarChart data={timeStats.daysOfMonth} margin={{top: 10, right: 0, left: -20, bottom: 0}}>
-                                    <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" vertical={false} />
-                                    <XAxis 
-                                        dataKey="name" 
-                                        axisLine={false} 
-                                        tickLine={false} 
-                                        tick={{fill: '#94a3b8', fontSize: 10, fontWeight: 500}} 
-                                        interval={2}
-                                    />
-                                    <YAxis 
-                                        axisLine={false} 
-                                        tickLine={false} 
-                                        tick={{fill: '#94a3b8', fontSize: 10}}
-                                    />
-                                    <Tooltip content={<CustomBarTooltip />} cursor={{fill: 'rgba(255,255,255,0.05)'}} />
-                                    <Bar dataKey={timeMetric} radius={[4, 4, 0, 0]} maxBarSize={40}>
-                                        {timeStats.daysOfMonth.map((entry, index) => (
-                                            <Cell 
-                                                key={`cell-${index}`} 
-                                                fill={
-                                                    timeMetric === 'rate' 
-                                                        ? (entry.rate >= 50 ? '#10B981' : '#EF4444')
-                                                        : (entry.profit >= 0 ? '#10B981' : '#EF4444')
-                                                }
-                                                fillOpacity={timeMetric === 'rate' ? (entry.total > 0 ? 1 : 0.1) : 1}
-                                            />
-                                        ))}
-                                    </Bar>
-                                    <ReferenceLine y={0} stroke="#334155" />
-                                </BarChart>
-                            </ResponsiveContainer>
-                        </div>
-                    </div>
+                                ))}
+                            </Bar>
+                            <ReferenceLine y={0} stroke="#334155" />
+                        </BarChart>
+                    </ResponsiveContainer>
+                </div>
+                
+                {/* Footer Legend */}
+                <div className="flex justify-center gap-6 mt-4 text-[10px] text-slate-500 font-bold uppercase tracking-wider">
+                     <div className="flex items-center gap-2">
+                         <span className="w-3 h-3 bg-emerald-500 rounded"></span> {timeMetric === 'profit' ? 'Lucro Líquido' : 'Alta Assertividade'}
+                     </div>
+                     <div className="flex items-center gap-2">
+                         <span className="w-3 h-3 bg-red-500 rounded"></span> {timeMetric === 'profit' ? 'Prejuízo' : 'Baixa Assertividade'}
+                     </div>
+                </div>
              </div>
           </div>
       )}
 
-      {/* --- GRÁFICO DE EVOLUÇÃO (PROJECTION VS REALITY) --- */}
+      {/* --- GRÁFICO DE EVOLUÇÃO --- */}
       <div className="bg-slate-950 rounded-xl border border-slate-800 shadow-xl p-4 md:p-6 relative overflow-hidden">
+        {/* ... (Evolution Chart code remains unchanged) ... */}
         <div className="flex items-center justify-between mb-8">
             <div>
                 <div className="flex items-center gap-2 text-emerald-400 font-bold text-xs uppercase tracking-widest mb-1">
@@ -747,7 +701,6 @@ export const Analytics: React.FC<Props> = ({ sessions, initialBankroll, dailyGoa
                     />
                     <Tooltip content={<CustomChartTooltip />} />
                     
-                    {/* Linha de Meta (Ideal) */}
                     <Area 
                         type="monotone" 
                         dataKey="ideal" 
@@ -758,7 +711,6 @@ export const Analytics: React.FC<Props> = ({ sessions, initialBankroll, dailyGoa
                         fill="url(#colorIdeal)" 
                     />
                     
-                    {/* Linha Real */}
                     <Area 
                         type="monotone" 
                         dataKey="real" 
@@ -769,7 +721,6 @@ export const Analytics: React.FC<Props> = ({ sessions, initialBankroll, dailyGoa
                         dot={<CustomDot />}
                     />
 
-                    {/* Linhas de Referência para Aportes */}
                     {chartData.map((entry, idx) => (
                         entry.deposit ? (
                             <ReferenceLine 
@@ -848,7 +799,6 @@ export const Analytics: React.FC<Props> = ({ sessions, initialBankroll, dailyGoa
                                       {expandedSessionId === session.id ? <ChevronUp className="w-4 h-4 inline text-slate-500" /> : <ChevronDown className="w-4 h-4 inline text-slate-500" />}
                                   </td>
                               </tr>
-                              {/* EXPANDED ROW DETAILS */}
                               {expandedSessionId === session.id && (
                                   <tr>
                                       <td colSpan={5} className="bg-slate-950/50 p-0">
@@ -860,11 +810,7 @@ export const Analytics: React.FC<Props> = ({ sessions, initialBankroll, dailyGoa
                                               {session.roundsDetail && session.roundsDetail.length > 0 ? (
                                                   <div className="grid grid-cols-1 gap-2 max-h-60 overflow-y-auto pr-2 custom-scrollbar">
                                                       {session.roundsDetail.map((round, idx) => {
-                                                          // Lógica para detectar All-In (Aposta >= 99% do saldo anterior estimado)
-                                                          // Como não temos o saldo exato pré-round salvo, estimamos.
-                                                          // Mas para o visual simples, vamos destacar apostas muito altas (> 20% da banca final)
                                                           const isHighStakes = round.betAmount > (session.endBalance * 0.2); 
-                                                          
                                                           return (
                                                               <div key={round.id} className={`flex justify-between items-center p-2 rounded border-l-2 ${
                                                                   isHighStakes ? 'bg-purple-900/10 border-purple-500' : 
