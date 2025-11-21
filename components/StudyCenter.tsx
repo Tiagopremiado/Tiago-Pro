@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { ExternalAnalysis, AnalysisMode } from './ExternalAnalysis';
-import { BookOpen, Lightbulb, Youtube, TrendingUp, Brain, Target, RefreshCw, Search, ShieldCheck, PlayCircle } from 'lucide-react';
+import { BookOpen, Lightbulb, Youtube, TrendingUp, Brain, Target, RefreshCw, Search, ShieldCheck, PlayCircle, Microscope, Wallet, AlertTriangle, TrendingDown, Calculator } from 'lucide-react';
 
 // Banco de Dados de Conhecimento (Simulando busca na internet)
 const KNOWLEDGE_BASE = [
@@ -67,6 +67,46 @@ const KNOWLEDGE_BASE = [
         content: 'É o sistema criptográfico que garante que o resultado já estava definido antes da rodada começar. Não existe "timing do clique", existe entrar na rodada certa.',
         icon: Lightbulb,
         color: 'text-yellow-400'
+    },
+    {
+        id: 9,
+        category: 'Padrão Oculto',
+        title: 'O Espelhamento Rosa',
+        content: 'Muitas vezes, após uma vela de 10x+, o mercado paga uma sequência de baixas e depois "espelha" outra vela alta com valor similar. Anote os minutos exatos da primeira vela.',
+        icon: Microscope,
+        color: 'text-purple-500'
+    },
+    {
+        id: 10,
+        category: 'Iniciante',
+        title: 'Gestão de Banca 101',
+        content: 'Nunca coloque mais de 5% da banca em uma única rodada. Se você tem R$ 100, sua entrada máxima é R$ 5. Sobrevivência é a prioridade número 1.',
+        icon: Wallet,
+        color: 'text-emerald-400'
+    },
+    {
+        id: 11,
+        category: 'Psicologia',
+        title: 'A Armadilha do FOMO',
+        content: 'Viu uma vela de 100x e entrou na próxima achando que viria outra? Erro clássico. O FOMO (Medo de Ficar de Fora) é o maior causador de prejuízo em iniciantes.',
+        icon: AlertTriangle,
+        color: 'text-orange-500'
+    },
+    {
+        id: 12,
+        category: 'Técnica',
+        title: 'O Perigo do 1.00x (Insta-Loss)',
+        content: 'O algoritmo é programado para dar lucro à casa. As velas de 1.00x (que quebram na decolagem) servem para limpar a mesa. Se vier uma, espere pelo menos 3 rodadas antes de entrar.',
+        icon: TrendingDown,
+        color: 'text-red-500'
+    },
+    {
+        id: 13,
+        category: 'Matemática',
+        title: 'A Probabilidade do 2.00x',
+        content: 'Estatisticamente, o multiplicador 2.00x aparece em cerca de 48% das rodadas. Com uma gestão correta, é o ponto doce entre risco e retorno para bater metas.',
+        icon: Calculator,
+        color: 'text-blue-400'
     }
 ];
 
